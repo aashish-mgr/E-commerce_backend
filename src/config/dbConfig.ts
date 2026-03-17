@@ -5,6 +5,7 @@ import { Sequelize } from 'sequelize-typescript';
 import User from '../model/userModel'
 import Product from '../model/productModel';
 import Category from '../model/categoryModel';
+import Cart from '../model/cartModel';
 import { applyRelationship } from '../model';
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -15,7 +16,7 @@ if (!DATABASE_URL) {
 const sequelize = new Sequelize(DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres',
-    models: [User, Product,Category],
+    models: [User, Product,Category,Cart],
     logging: console.log,
     dialectOptions: {
         ssl: {
