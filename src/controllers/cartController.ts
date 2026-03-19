@@ -57,6 +57,27 @@ class cartController {
             data: cartItems
         })
     }
+
+    async deleteCartItem(req:Request,res:Response) {
+        const {cartId} = req.params;
+        if(!cartId) {
+            return res.status(400).json({
+                message: "Please provide cart id"
+            })
+        }
+        const cartItem = await Cart.findOne({where: {id: cartId}});
+        if(!cartItem) {
+            return res.status(400).json({
+                message: "Cart Item not found"
+            })
+        }
+
+        await Cart.destroy({where: {id: cartId}});
+
+        return res.status(200).json({
+            message: "Cart item successfully deleted"
+        })
+    }
 }
 
 export default new cartController();
