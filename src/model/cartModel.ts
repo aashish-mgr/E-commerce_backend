@@ -21,7 +21,7 @@ class Cart extends Model {
         allowNull: false
     })
 
-    declare quantity: IntegerDataType
+    declare quantity: number
 }
 
 export default Cart;

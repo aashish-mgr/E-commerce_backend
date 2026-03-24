@@ -2,6 +2,9 @@ import User from "./userModel";
 import Category from "./categoryModel";
 import Product from "./productModel";
 import Cart from './cartModel'
+import Order from "./orderModel";
+import OrderDetail from "./orderDetailModel";
+import Payment from "./paymentModel";
 
 
 export function applyRelationship () {
@@ -16,6 +19,15 @@ Cart.belongsTo(Product,{foreignKey: 'productId'});
 
 User.hasMany(Cart,{foreignKey: 'userId'});
 Cart.belongsTo(User,{foreignKey: 'userId'});
+
+Order.hasMany(OrderDetail,{foreignKey: 'orderId'});
+OrderDetail.belongsTo(Order,{foreignKey: 'orderId'});
+
+Product.hasMany(OrderDetail,{foreignKey: 'productId'});
+OrderDetail.belongsTo(Product,{foreignKey: 'productId'});
+
+Payment.hasOne(Order,{foreignKey: 'paymentId'});
+Order.belongsTo(Payment,{foreignKey: 'paymentId'});
 
 }
 

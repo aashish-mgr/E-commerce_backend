@@ -7,6 +7,9 @@ import Product from '../model/productModel';
 import Category from '../model/categoryModel';
 import Cart from '../model/cartModel';
 import { applyRelationship } from '../model';
+import Order from '../model/orderModel';
+import OrderDetail from '../model/orderDetailModel';
+import Payment from '../model/paymentModel';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -16,7 +19,7 @@ if (!DATABASE_URL) {
 const sequelize = new Sequelize(DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres',
-    models: [User, Product,Category,Cart],
+    models: [User, Product,Category,Cart,Order,OrderDetail,Payment],
     logging: console.log,
     dialectOptions: {
         ssl: {
@@ -31,7 +34,7 @@ const connectDb = async () => {
     await sequelize.authenticate();
     console.log("connection has been established successfully")
     applyRelationship();
-    await sequelize.sync({alter: false,force: false});
+    await sequelize.sync({alter: true,force: false});
     console.log("sequelize sync completed")
     User;
     }
