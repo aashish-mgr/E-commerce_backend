@@ -2,6 +2,7 @@ import { Request,Response } from "express";
 import User from "../model/userModel";
 import bcrypt from 'bcryptjs'
 import * as jwt from 'jsonwebtoken'
+import { AuthRequest } from "../middlewares/authMiddleware";
 
 class AuthController {
    public static async registerUser(req:Request,res:Response) {
@@ -54,12 +55,39 @@ class AuthController {
         expiresIn: '20d'
     });
 
+    res.cookie('accessToken' ,token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax'
+    })
+
     return res.status(200).json({
         data: user,
-        token,
-        message: "user logged in successfully"
+        message: "user logged in succesaly"
     })
     }
+    public static async getUserProfile(req:AuthRequest,res:Response) {
+        const userId = req.user?.id;
+        const user = await User.findByPk(userId);
+        if(!user) {
+            return res.status(400).json({
+                message: "user not found"
+            })
+        }
+        return res.status(200).json({
+            data: user,
+            message: "user profile fetched successfully"
+        })
+    }
+
+    public static async  logoutUser(req:AuthRequest,res:Response) {
+        res.clearCookie('accessToken');
+        return res.status(200).json({
+            message: "user logged out successfully"
+        })
+    }
+
+    
 }
 
 export default AuthController;

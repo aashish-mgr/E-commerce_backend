@@ -1,4 +1,4 @@
-import { UUID, UUIDV4 } from "sequelize";
+
 import { Table, Column, Model,DataType } from "sequelize-typescript";
 
 @Table({
@@ -25,11 +25,16 @@ class Order extends Model {
 
     @Column({
         type: DataType.STRING,
-        allowNull: false
+        allowNull: false,
+        validate: {
+            len: {
+                args: [10,10],
+                msg: "Phone number must be 10 digits"
+            }
+        }
     })
     declare phoneNumber: string
 
-    declare paymentMethod: string
 
     @Column({
         type: DataType.FLOAT,

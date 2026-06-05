@@ -9,6 +9,8 @@ class productController {
   public static async createProduct  (req:AuthRequest, res:Response) {
   const { productName, productDescription, productPrice, categoryId } =
     req.body;
+    const file = req?.file;
+    const imagePath = file ? file.filename : null;
   if (
     !productName ||
     !productDescription ||
@@ -27,7 +29,8 @@ class productController {
     productDescription,
     productPrice,
     userId,
-    categoryId
+    categoryId,
+    image: imagePath
   });
 
   return res.status(200).json({

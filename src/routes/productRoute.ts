@@ -4,10 +4,12 @@ import productController from '../controllers/productController'
 import handleError from '../services/asyncError';
 import AuthMiddleware from '../middlewares/authMiddleware';
 import { Role } from '../middlewares/authMiddleware'; 
+import { upload } from '../middlewares/multerConfig';
 
 router.route('/create').post(
 	AuthMiddleware.isAuthenticated,
 	AuthMiddleware.permittedTo(Role.Vendor),
+	upload.single('image'),
 	handleError(productController.createProduct)
 );
 router.route('/getAll').get(

@@ -20,7 +20,7 @@ export enum  Role{
 
 class AuthMiddleware {
  public static isAuthenticated(req: AuthRequest, res: Response, next: NextFunction) {
-    const token = req.headers.authorization;
+    const token = req.cookies.accessToken;
 
     if (!token) {
       return res.status(400).json({
@@ -28,7 +28,7 @@ class AuthMiddleware {
       });
     }
 
-   jwt.verify(token,process.env.JWT_SECRET_KEY as string, async (err, decoded:any) => {
+   jwt.verify(token, process.env.JWT_SECRET_KEY as string, async (err: jwt.VerifyErrors | null, decoded: any) => {
         console.log(token);
       if (err) {
         return res.status(400).json({
