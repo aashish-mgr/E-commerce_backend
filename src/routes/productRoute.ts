@@ -13,8 +13,6 @@ router.route('/create').post(
 	handleError(productController.createProduct)
 );
 router.route('/getAll').get(
-	AuthMiddleware.isAuthenticated,
-	AuthMiddleware.permittedTo(Role.Vendor, Role.Customer),
 	handleError(productController.getProducts)
 );
 router.route('/getSingle/:id').get(
