@@ -7,7 +7,7 @@ const storage = multer.diskStorage({
         if(!allowedFiletypes.includes(file.mimetype)) {
             cb(new Error("this file type was not supported"), "");
         } else {
-            cb(null, './src/uploads');
+            cb(null, '/src/uploads');
         }
     },
 

@@ -10,6 +10,7 @@ import orderRoute from './routes/orderRoute'
 import * as dotenv from 'dotenv'
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 
 
 
@@ -21,6 +22,7 @@ connectDb();
 
 app.use(express.json());
 
+
 adminSeeder();
 CategoryController.categorySeeder();
 
@@ -30,7 +32,10 @@ app.use (cors( {
 }));
 app.use(cookieParser());
 
-
+app.use(
+  "/uploads",
+  express.static(path.join(process.cwd(), "src/uploads"))
+);
 app.use('/auth',userRoute);
 app.use('/product',productRoute);
 app.use('/category',categoryRoute);
