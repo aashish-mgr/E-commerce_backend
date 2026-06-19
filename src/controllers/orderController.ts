@@ -39,6 +39,7 @@ class OrderController {
     const paymentData = await Payment.create({
       paymentMethod: paymentDetails.paymentMethod,
     });
+    
     const orderData = await Order.create({
       shippingAddress,
       phoneNumber,
@@ -137,6 +138,10 @@ class OrderController {
         {
           model: Payment,
         },
+        {
+          model: OrderDetail,
+          include: [Product]
+        }
       ],
     });
     if (orders.length > 0) {
