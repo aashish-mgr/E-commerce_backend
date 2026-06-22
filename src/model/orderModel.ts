@@ -1,6 +1,5 @@
 
-import { Table, Column, Model, DataType, ForeignKey } from "sequelize-typescript";
-import Product from "./productModel";
+import { Table, Column, Model,DataType } from "sequelize-typescript";
 
 @Table({
     tableName: "orders",
@@ -42,13 +41,6 @@ class Order extends Model {
         allowNull: false
     })
     declare totalAmount: number
-
-    @ForeignKey(() => Product)
-    @Column({
-        type: DataType.UUID,
-        allowNull: true
-    })
-    declare productId: string | null
 
     @Column({
         type: DataType.ENUM("pending","shipped","delivered","cancelled"),

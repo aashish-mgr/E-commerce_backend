@@ -164,12 +164,13 @@ class OrderController {
       });
     }
 
-    const orderDetail = await OrderDetail.findAll({
-      where: { orderId },
+    const orderDetail = await Order.findAll({
+      where: {id: orderId },
       include: [
         {
-          model: Product,
-        },
+          model: OrderDetail,
+          include: [Product]
+        }
       ],
     });
 
