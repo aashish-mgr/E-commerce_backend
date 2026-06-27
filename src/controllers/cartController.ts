@@ -26,8 +26,9 @@ class cartController {
                 message: "quantity added successfully"
             })
         }
-        await Cart.create({quantity,productId,userId});
+        const cart = await Cart.create({quantity,productId,userId});
            return res.status(200).json({
+            data: cart,
             message: "Added to cart successfully"
             })
         
