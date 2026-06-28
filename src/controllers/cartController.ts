@@ -3,6 +3,7 @@ import { Request,Response } from "express";
 import { AuthRequest } from "../middlewares/authMiddleware";
 import { error } from "node:console";
 import Product from "../model/productModel";
+import Category from "../model/categoryModel";
 
 class cartController {
     async addToCart (req:AuthRequest,res:Response) {
@@ -42,7 +43,8 @@ class cartController {
             where: {userId},
             include: [
                 {
-                    model: Product
+                    model: Product,
+                    include: [Category]
                 }
             ]
         })
