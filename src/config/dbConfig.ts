@@ -34,7 +34,7 @@ const connectDb = async () => {
     await sequelize.authenticate();
     console.log("connection has been established successfully")
     applyRelationship();
-    await sequelize.sync({alter: true,force: false});
+    await sequelize.sync({alter: false,force: false});
     console.log("sequelize sync completed")
     User;
     }

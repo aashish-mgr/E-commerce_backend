@@ -15,7 +15,7 @@ export interface OrderDetails {
 }
 
 export enum PaymentMethod {
-    COD = "cash on delivery",
+    COD = "cod",
     Khalti = "khalti",
     Esewa = "esewa"
 

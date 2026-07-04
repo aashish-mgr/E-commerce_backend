@@ -24,7 +24,7 @@ class Payment extends Model {
     declare pidx: string
 
     @Column({
-        type: DataType.ENUM("khalti","esewa","cash on delevery"),
+        type: DataType.ENUM("khalti","esewa","cod"),
         allowNull: false
     })
 

@@ -48,7 +48,7 @@ class OrderController {
       paymentId: paymentData.id,
     });
 
-    for (let i = 0; i < items.length; i++) {
+    for (let i = 0; i < items?.length; i++) {
       await OrderDetail.create({
         quantity: items[i]?.quantity,
         productId: items[i]?.productId,
@@ -58,11 +58,11 @@ class OrderController {
 
     if (paymentData.paymentMethod === PaymentMethod.Khalti) {
       const data = {
-        return_url: "http://localhost:3000/",
+        return_url: "http://localhost:5173/paymentCallback",
         amount: orderData.totalAmount * 100,
         purchase_order_id: orderData.id,
         purchase_order_name: "order_" + orderData.id,
-        website_url: "http://localhost:3000/",
+        website_url: "http://localhost:5173/",
       };
       const response = await axios.post(
         "https://dev.khalti.com/api/v2/epayment/initiate/",
@@ -79,17 +79,19 @@ class OrderController {
       res.status(200).json({
         message: "Order successfully created",
         response: khaltiResponse.payment_url,
+        orderId: orderData.id,
       });
     } else {
       return res.status(200).json({
         message: "Order successfully created",
+        orderId: orderData.id,
       });
     }
   }
 
   async verifyPayment(req: AuthRequest, res: Response) {
     const { pidx } = req.body;
-    const userId = req.user?.id;
+  
     if (!pidx) {
       return res.status(400).json({
         message: "pidx is required",
@@ -117,12 +119,24 @@ class OrderController {
           },
         },
       );
-
-      res.status(200).json({
-        message: "Payment successfully verified",
+      const paymentData = await Payment.findOne({
+        where: {
+          pidx: pidx,
+        },
+        include: [
+           {
+            model: Order,
+            attributes: ['id'],
+           }
+        ]
+      });
+     console.log("updated")
+      return res.status(200).json({
+        message: "Payment successfully verified.",
+        data: paymentData,
       });
     } else {
-      return res.status(200).json({
+      return res.status(400).json({
         message: "Payment not verified",
       });
     }
