@@ -12,17 +12,20 @@
   "dependencies": {
     "axios": "^1.14.0",
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^1.41.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
+    "multer-storage-cloudinary": "^4.0.0",
     "nodemon": "^3.1.14",
     "pg": "^8.20.0",
     "sequelize": "^6.37.8",
     "sequelize-typescript": "^2.1.6",
-    "tsc-node": "^0.0.3"
+    "tsc-node": "^0.0.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

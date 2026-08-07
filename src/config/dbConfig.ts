@@ -1,5 +1,3 @@
-import * as dotenv from 'dotenv';
-dotenv.config();
 
 import { Sequelize } from 'sequelize-typescript';
 import User from '../model/userModel'
@@ -10,8 +8,9 @@ import { applyRelationship } from '../model';
 import Order from '../model/orderModel';
 import OrderDetail from '../model/orderDetailModel';
 import Payment from '../model/paymentModel';
+import { envConfig } from './env';
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = envConfig.DATABASE_URL;
 if (!DATABASE_URL) {
     throw new Error('DATABASE_URL is not set in environment variables');
 }
