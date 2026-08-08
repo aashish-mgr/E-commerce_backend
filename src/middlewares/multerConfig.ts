@@ -1,22 +1,20 @@
 import multer from "multer";
-import path from "path";
+import cloudinary from "../config/cloudinary"
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 
-const storage = multer.diskStorage({
-    destination: function(req,file,cb) {
-        const allowedFiletypes = ['image/png', 'image/jpeg','image/jpg'];
-        if(!allowedFiletypes.includes(file.mimetype)) {
-            cb(new Error("this file type was not supported"), "");
-        } else {
-            cb(null, '/src/uploads');
-        }
-    },
+const storage =  new CloudinaryStorage ({
+    cloudinary,
+    params:async (req,file) => ({
+        folder: "ecommerce",
+        allowed_formats: ["jpg", "jpeg", "png", "webp"],
+        public_id: `${Date.now()}-${file.originalname}`,
 
-    filename: function(req,file,cb) {
-        const uniqueName = Date.now() + file.originalname;
-        cb(null,uniqueName);
-    },
-    
-    
-});
+    })
+}
+);
 
-export const upload = multer({storage: storage});
+const upload = multer({storage: storage});
+
+export default upload;
+
+
