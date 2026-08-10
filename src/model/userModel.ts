@@ -30,7 +30,7 @@ class User extends Model {
 
     @Column({
         type: DataType.STRING,
-        allowNull: false
+       
     })
     declare userPassword:string
     @Column({
