@@ -11,6 +11,9 @@ const schema = z.object({
     CLOUDINARY_API_SECRET: z.string().min(1, "CLOUDINARY_API_SECRET is required"),
     ADMIN_EMAIL: z.string().email("ADMIN_EMAIL must be a valid email address"),
     ADMIN_PASSWORD: z.string().min(1, "ADMIN_PASSWORD is required"),
+    GOOGLE_CLIENT_ID: z.string().min(1,"GOOGLE_CLIENT_ID is required"),
+    GOOGLE_CLIENT_SECRET: z.string().min(1,"GOOGLE_CLIENT_SECRET is required"),
+    GOOGLE_REDIRECT_URL: z.string().url("GOOGLE_REDIRECT_URL must be a valid URL"),
 })
 
 const parsed = schema.safeParse(process.env);
@@ -28,4 +31,7 @@ export const envConfig = {
     CLOUDINARY_API_SECRET: parsed.data.CLOUDINARY_API_SECRET,
     ADMIN_EMAIL: parsed.data.ADMIN_EMAIL,
     ADMIN_PASSWORD: parsed.data.ADMIN_PASSWORD,
+    GOOGLE_CLIENT_ID: parsed.data.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: parsed.data.GOOGLE_CLIENT_SECRET,
+    GOOGLE_REDIRECT_URL: parsed.data.GOOGLE_REDIRECT_URL,
 }

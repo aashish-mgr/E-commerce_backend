@@ -39,6 +39,18 @@ class User extends Model {
         allowNull: false
     })
     declare userRole:string
+
+    @Column({
+        type: DataType.STRING,
+        unique: true
+    })
+    declare googleId: string
+
+    @Column({
+        type: DataType.ENUM("local","google"),
+        defaultValue: "local"
+    })
+    declare provider: string
 }
 
 export default User;
