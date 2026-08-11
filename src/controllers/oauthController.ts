@@ -30,12 +30,12 @@ class oauthController {
 
         if(!payload) throw new Error('Invalid token payload');
 
-        const user = await User.findOne({
+        let user = await User.findOne({
             where: {userEmail: payload.email}
         })
 
         if(!user) {
-        const user = await User.create({
+        user = await User.create({
             googleId: payload.sub,
             userName: payload.name,
             userEmail: payload.email,
@@ -48,7 +48,7 @@ class oauthController {
         await user.save();
     }
 
-     const token = jwt.sign({id: user?.id},envConfig.JWT_SECRET_KEY,{
+     const token = jwt.sign({id: user.id},envConfig.JWT_SECRET_KEY,{
             expiresIn: '20d'
         });
     
@@ -58,12 +58,7 @@ class oauthController {
             sameSite: 'lax' 
         })
 
-        return res.status(200).json({
-            message: "user logged in successfully",
-            data: {
-                user,
-            }
-        })
+        res.redirect("http://localhost:5173/auth/complete");
      }
      catch (error) {
         throw new Error("Error during Google OAuth callback: " + (error as Error).message);
