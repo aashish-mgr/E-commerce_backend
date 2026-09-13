@@ -61,8 +61,17 @@ class AuthController {
         sameSite: 'lax'
     })
 
+    const safeUser = {
+        id: user.id,
+        userName: user.userName,
+        userEmail: user.userEmail,
+        userRole: user.userRole,
+        googleId: user.googleId,
+        provider: user.provider,
+    };
+
     return res.status(200).json({
-        data: user,
+        data: safeUser,
         message: "user logged in succesaly"
     })
     }
@@ -74,8 +83,16 @@ class AuthController {
                 message: "user not found"
             })
         }
+        const safeUser = {
+            id: user.id,
+            userName: user.userName,
+            userEmail: user.userEmail,
+            userRole: user.userRole,
+            googleId: user.googleId,
+            provider: user.provider,
+        };
         return res.status(200).json({
-            data: user,
+            data: safeUser,
             message: "user profile fetched successfully"
         })
     }

@@ -29,7 +29,6 @@ class AuthMiddleware {
     }
 
    jwt.verify(token, process.env.JWT_SECRET_KEY as string, async (err: jwt.VerifyErrors | null, decoded: any) => {
-        console.log(token);
       if (err) {
         return res.status(400).json({
           message: "Token couldn't be verified",
