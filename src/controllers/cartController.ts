@@ -71,21 +71,22 @@ class cartController {
         })
     }
 
-    async deleteCartItem(req:Request,res:Response) {
+    async deleteCartItem(req:AuthRequest,res:Response) {
         const {cartId} = req.params;
+        const userId = req.user?.id;
         if(!cartId) {
             return res.status(400).json({
                 message: "Please provide cart id"
             })
         }
-        const cartItem = await Cart.findOne({where: {id: cartId}});
+        const cartItem = await Cart.findOne({where: {id: cartId, userId}});
         if(!cartItem) {
             return res.status(400).json({
                 message: "Cart Item not found"
             })
         }
 
-        await Cart.destroy({where: {id: cartId}});
+        await Cart.destroy({where: {id: cartId, userId}});
 
         return res.status(200).json({
             message: "Cart item successfully deleted"

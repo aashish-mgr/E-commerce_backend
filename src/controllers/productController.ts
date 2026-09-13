@@ -93,7 +93,7 @@ class productController {
     });
   }
 
-  public static async updateProduct(req: Request, res: Response) {
+  public static async updateProduct(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const { productName, productDescription, productPrice, categoryId } =
       req.body;
@@ -103,6 +103,12 @@ class productController {
     if (!product) {
       return res.status(400).json({
         message: "product not found",
+      });
+    }
+
+    if (product.userId !== req.user?.id) {
+      return res.status(403).json({
+        message: "You are not allowed to modify this product",
       });
     }
 
@@ -131,7 +137,7 @@ class productController {
     });
   }
 
-  public static async deleteProduct(req: Request, res: Response) {
+  public static async deleteProduct(req: AuthRequest, res: Response) {
     const { id } = req.params;
 
     const product = await Product.findOne({ where: { id } });
@@ -139,6 +145,12 @@ class productController {
     if (!product) {
       return res.status(400).json({
         message: "product not found",
+      });
+    }
+
+    if (product.userId !== req.user?.id) {
+      return res.status(403).json({
+        message: "You are not allowed to delete this product",
       });
     }
 

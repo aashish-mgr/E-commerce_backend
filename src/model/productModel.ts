@@ -37,6 +37,18 @@ class Product extends Model{
     })
     declare image: string
 
+    @Column({
+        type: DataType.UUID,
+        allowNull: false
+    })
+    declare userId: string
+
+    @Column({
+        type: DataType.UUID,
+        allowNull: false
+    })
+    declare categoryId: string
+
 }
 
 export default Product;
