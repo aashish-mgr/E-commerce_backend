@@ -27,7 +27,7 @@ class Product extends Model{
     declare productDescription: string;
 
     @Column({
-        type: DataType.STRING,
+        type: DataType.DECIMAL(10, 2),
         allowNull: false
     })
     declare productPrice: string;

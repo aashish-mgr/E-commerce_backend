@@ -95,7 +95,7 @@ class productController {
 
   public static async updateProduct(req: Request, res: Response) {
     const { id } = req.params;
-    const { productName, productDescription, productPrice, productCategory } =
+    const { productName, productDescription, productPrice, categoryId } =
       req.body;
 
     const product = await Product.findOne({ where: { id } });
@@ -107,7 +107,7 @@ class productController {
     }
 
     await Product.update(
-      { productName, productDescription, productPrice, productCategory },
+      { productName, productDescription, productPrice, categoryId },
       { where: { id } },
     );
 

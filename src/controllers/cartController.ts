@@ -10,24 +10,33 @@ class cartController {
         const {quantity, productId} = req.body;
         const userId = req.user?.id;
 
-        if(!quantity || !productId) {
+        if(!quantity || quantity < 1 || !productId) {
             return res.status(400).json({
                 message: "Please provide all the details"
             })
         }
+
+        const product = await Product.findByPk(productId);
+        if(!product) {
+            return res.status(400).json({
+                message: "Product not found"
+            })
+        }
+
+        const parsedQuantity = Math.floor(Number(quantity));
 
         const cartItem = await Cart.findOne({
             where: {userId,productId}
         })
 
         if(cartItem) {
-            cartItem.quantity += quantity;
+            cartItem.quantity += parsedQuantity;
             await cartItem.save();
             return res.status(200).json({
                 message: "quantity added successfully"
             })
         }
-        const cart = await Cart.create({quantity,productId,userId});
+        const cart = await Cart.create({quantity: parsedQuantity,productId,userId});
            return res.status(200).json({
             data: cart,
             message: "Added to cart successfully"
