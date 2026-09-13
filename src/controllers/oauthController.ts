@@ -61,7 +61,10 @@ class oauthController {
         res.redirect("http://localhost:5173/auth/complete");
      }
      catch (error) {
-        throw new Error("Error during Google OAuth callback: " + (error as Error).message);
+        console.error("Error during Google OAuth callback:", error);
+        return res.status(500).json({
+            message: "Google authentication failed"
+        });
      }
    }
 
