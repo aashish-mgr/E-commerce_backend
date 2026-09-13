@@ -13,49 +13,85 @@ import Payment from "../model/paymentModel";
 import OrderDetail from "../model/orderDetailModel";
 import axios from "axios";
 import Product from "../model/productModel";
-import User from "../model/userModel";
 import { envConfig } from "../config/env";
+import { ApiError } from "../services/asyncError";
+import { sequelize } from "../config/dbConfig";
 class OrderController {
   //customer side
   async createOrder(req: AuthRequest, res: Response) {
-    const {
-      shippingAddress,
-      phoneNumber,
-      totalAmount,
-      paymentDetails,
-      items,
-    }: OrderType = req.body;
+    const { shippingAddress, phoneNumber, paymentDetails, items } =
+      req.body as OrderType;
     const userId = req.user?.id;
     if (
       !shippingAddress ||
       !phoneNumber ||
-      !totalAmount ||
       !paymentDetails ||
-      items.length == 0
+      !Array.isArray(items) ||
+      items.length === 0
     ) {
       return res.status(400).json({
         message: "Please provide all the details",
       });
     }
-    const paymentData = await Payment.create({
-      paymentMethod: paymentDetails.paymentMethod,
-    });
-    
-    const orderData = await Order.create({
-      shippingAddress,
-      phoneNumber,
-      totalAmount,
-      userId,
-      paymentId: paymentData.id,
-    });
 
-    for (let i = 0; i < items?.length; i++) {
-      await OrderDetail.create({
-        quantity: items[i]?.quantity,
-        productId: items[i]?.productId,
-        orderId: orderData.id,
-      });
-    }
+    const { orderData, paymentData } = await sequelize.transaction(
+      async (transaction) => {
+        const orderItems: { quantity: number; productId: string }[] = [];
+        let totalAmount = 0;
+
+        for (const item of items) {
+          const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1));
+          const product = await Product.findByPk(item.productId, {
+            transaction,
+          });
+
+          if (!product) {
+            throw new ApiError(
+              `Product ${item.productId} not found`,
+              400,
+            );
+          }
+
+          const price = Number(product.productPrice);
+          if (isNaN(price)) {
+            throw new ApiError(
+              `Product ${product.productName} has an invalid price`,
+              400,
+            );
+          }
+
+          totalAmount += price * quantity;
+          orderItems.push({ productId: product.id, quantity });
+        }
+
+        const createdPayment = await Payment.create(
+          {
+            paymentMethod: paymentDetails.paymentMethod,
+          },
+          { transaction },
+        );
+
+        const createdOrder = await Order.create(
+          {
+            shippingAddress,
+            phoneNumber,
+            totalAmount,
+            userId,
+            paymentId: createdPayment.id,
+          },
+          { transaction },
+        );
+
+        for (const item of orderItems) {
+          await OrderDetail.create(
+            { ...item, orderId: createdOrder.id },
+            { transaction },
+          );
+        }
+
+        return { orderData: createdOrder, paymentData: createdPayment };
+      },
+    );
 
     if (paymentData.paymentMethod === PaymentMethod.Khalti) {
       const data = {
@@ -75,11 +111,12 @@ class OrderController {
         },
       );
 
-      const khaltiResponse: khaltiResponse = response.data;
-      ((paymentData.pidx = khaltiResponse.pidx), await paymentData.save());
+      const khaltiReturnData: khaltiResponse = response.data;
+      paymentData.pidx = khaltiReturnData.pidx;
+      await paymentData.save();
       res.status(200).json({
         message: "Order successfully created",
-        response: khaltiResponse.payment_url,
+        response: khaltiReturnData.payment_url,
         orderId: orderData.id,
       });
     } else {
