@@ -14,6 +14,7 @@ import OrderDetail from "../model/orderDetailModel";
 import axios from "axios";
 import Product from "../model/productModel";
 import User from "../model/userModel";
+import { envConfig } from "../config/env";
 class OrderController {
   //customer side
   async createOrder(req: AuthRequest, res: Response) {
@@ -69,7 +70,7 @@ class OrderController {
         data,
         {
           headers: {
-            Authorization: "key 36ccc627f6274cbcb2fd4f09630563d2",
+            Authorization: "key ${envConfig.KHALTI_SECRET_KEY}",
           },
         },
       );
@@ -103,7 +104,7 @@ class OrderController {
       { pidx },
       {
         headers: {
-          Authorization: "key 36ccc627f6274cbcb2fd4f09630563d2",
+          Authorization: "key ${envConfig.KHALTI_SECRET_KEY}",
         },
       },
     );

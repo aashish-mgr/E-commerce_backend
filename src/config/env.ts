@@ -14,6 +14,7 @@ const schema = z.object({
     GOOGLE_CLIENT_ID: z.string().min(1,"GOOGLE_CLIENT_ID is required"),
     GOOGLE_CLIENT_SECRET: z.string().min(1,"GOOGLE_CLIENT_SECRET is required"),
     GOOGLE_REDIRECT_URL: z.string().url("GOOGLE_REDIRECT_URL must be a valid URL"),
+    KHALTI_SECRET_KEY: z.string().min(1, "KHALTI_SECRET_KEY is required"),
 })
 
 const parsed = schema.safeParse(process.env);
@@ -34,4 +35,5 @@ export const envConfig = {
     GOOGLE_CLIENT_ID: parsed.data.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: parsed.data.GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URL: parsed.data.GOOGLE_REDIRECT_URL,
+    KHALTI_SECRET_KEY: parsed.data.KHALTI_SECRET_KEY,
 }
