@@ -5,13 +5,16 @@ import * as jwt from 'jsonwebtoken'
 import { AuthRequest } from "../middlewares/authMiddleware";
 
 class AuthController {
-   public static async registerUser(req:Request,res:Response) {
-          const {userName,userEmail,userPassword} = req.body;
-           if(!userName || !userEmail || !userPassword) {
+public static async registerUser(req:Request,res:Response) {
+          const {userName,userEmail,userPassword,userRole} = req.body;
+            if(!userName || !userEmail || !userPassword) {
         return res.status(400).json({
             message: "provide all the details"
         })
     }
+
+    const validRoles = ["vendor", "customer"];
+    const role = validRoles.includes(userRole) ? userRole : "customer";
 
     const existingUser = await User.findOne({where: {userEmail}});
     if(existingUser) {
@@ -20,7 +23,7 @@ class AuthController {
         })
     }
 
-    await User.create({userName,userEmail,userPassword: bcrypt.hashSync(userPassword,10)});
+    await User.create({userName,userEmail,userRole: role,userPassword: bcrypt.hashSync(userPassword,10)});
     
     return res.status(200).json({
         message: "user registered successfully"
