@@ -59,6 +59,24 @@ class productController {
     });
   }
 
+  public static async getMyProducts(req: AuthRequest, res: Response) {
+    const userId = req.user?.id;
+    const products = await Product.findAll({
+      where: { userId },
+      include: [
+        {
+          model: Category,
+          attributes: ["id", "categoryName"],
+        },
+      ],
+    });
+
+    return res.status(200).json({
+      data: products,
+      message: "products fetched successfully",
+    });
+  }
+
   public static async getSingleProduct(req: Request, res: Response) {
     const { id } = req.params;
     if (!id) {

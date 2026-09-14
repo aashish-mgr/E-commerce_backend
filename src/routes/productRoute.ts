@@ -15,6 +15,11 @@ router.route('/create').post(
 router.route('/getAll').get(
 	handleError(productController.getProducts)
 );
+router.route('/getMyProducts').get(
+	AuthMiddleware.isAuthenticated,
+	AuthMiddleware.permittedTo(Role.Vendor),
+	handleError(productController.getMyProducts)
+);
 router.route('/getSingle/:id').get(
 	AuthMiddleware.isAuthenticated,
 	AuthMiddleware.permittedTo(Role.Vendor, Role.Customer),

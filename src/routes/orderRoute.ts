@@ -12,6 +12,7 @@ router.route('/getOrderDetail/:orderId').get(AuthMiddleware.isAuthenticated,Auth
 router.route('/cancelOrder/:orderId').patch(AuthMiddleware.isAuthenticated,AuthMiddleware.permittedTo(Role.Customer),handleError(orderController.cancelOrder))
 
 //vendor side
+router.route('/getVendorOrders').get(AuthMiddleware.isAuthenticated,AuthMiddleware.permittedTo(Role.Vendor),handleError(orderController.getVendorOrders))
 router.route('/getOrdersForProduct/:productId').get(AuthMiddleware.isAuthenticated,AuthMiddleware.permittedTo(Role.Vendor),handleError(orderController.getOrdersForProduct))
 router.route('/updateOrderStatus/:orderId').patch(AuthMiddleware.isAuthenticated,AuthMiddleware.permittedTo(Role.Vendor),handleError(orderController.updateOrderStatus))
 router.route('/deleteOrder/:orderId').delete(AuthMiddleware.isAuthenticated,AuthMiddleware.permittedTo(Role.Vendor),handleError(orderController.deleteOrder))

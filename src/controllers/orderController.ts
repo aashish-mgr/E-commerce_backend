@@ -275,6 +275,33 @@ class OrderController {
   }
 
   //admin side
+  async getVendorOrders(req: AuthRequest, res: Response) {
+    const userId = req.user?.id;
+    const orderDetails = await OrderDetail.findAll({
+      include: [
+        {
+          model: Product,
+          where: { userId },
+          attributes: ["id", "productName", "productPrice", "image"],
+        },
+        {
+          model: Order,
+          include: [Payment],
+        },
+      ],
+    });
+
+    if (orderDetails.length > 0) {
+      return res.status(200).json({
+        message: "orders successfully fetched",
+        data: orderDetails,
+      });
+    }
+    return res.status(400).json({
+      message: "orders not found",
+    });
+  }
+
   async getOrdersForProduct(req: AuthRequest, res: Response) {
     const { productId } = req.params;
     if (!productId) {
