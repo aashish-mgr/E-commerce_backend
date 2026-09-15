@@ -13,6 +13,7 @@ import Payment from "../model/paymentModel";
 import OrderDetail from "../model/orderDetailModel";
 import axios from "axios";
 import Product from "../model/productModel";
+import User from "../model/userModel";
 import { envConfig } from "../config/env";
 import { ApiError } from "../services/asyncError";
 import { sequelize } from "../config/dbConfig";
@@ -329,6 +330,45 @@ class OrderController {
         message: "orders not found for this product",
       });
     }
+  }
+
+  async getVendorOrderDetail(req: AuthRequest, res: Response) {
+    const userId = req.user?.id;
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return res.status(400).json({
+        message: "order id is required",
+      });
+    }
+
+    const orderDetails = await OrderDetail.findAll({
+      where: { orderId },
+      include: [
+        {
+          model: Product,
+          where: { userId },
+          attributes: ["id", "productName", "productPrice", "image"],
+        },
+        {
+          model: Order,
+          include: [
+            Payment,
+            { model: User, attributes: ["id", "userName", "userEmail"] },
+          ],
+        },
+      ],
+    });
+
+    if (orderDetails.length > 0) {
+      return res.status(200).json({
+        message: "order detail successfully fetched",
+        data: orderDetails,
+      });
+    }
+    return res.status(400).json({
+      message: "order not found",
+    });
   }
 
   async updateOrderStatus(req: AuthRequest, res: Response) {
