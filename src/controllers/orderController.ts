@@ -61,6 +61,13 @@ class OrderController {
             );
           }
 
+          if (Number(product.stock) < quantity) {
+            throw new ApiError(
+              `Insufficient stock for ${product.productName}`,
+              400,
+            );
+          }
+
           totalAmount += price * quantity;
           orderItems.push({ productId: product.id, quantity });
         }
@@ -87,6 +94,10 @@ class OrderController {
           await OrderDetail.create(
             { ...item, orderId: createdOrder.id },
             { transaction },
+          );
+          await Product.decrement(
+            "stock",
+            { by: item.quantity, where: { id: item.productId }, transaction },
           );
         }
 
@@ -283,11 +294,11 @@ class OrderController {
         {
           model: Product,
           where: { userId },
-          attributes: ["id", "productName", "productPrice", "image"],
+          attributes: ["id", "productName", "productPrice", "image", "stock"],
         },
         {
           model: Order,
-          include: [Payment],
+          include: [Payment, { model: User, attributes: ["id", "userName", "userEmail"] }],
         },
       ],
     });
@@ -348,7 +359,7 @@ class OrderController {
         {
           model: Product,
           where: { userId },
-          attributes: ["id", "productName", "productPrice", "image"],
+          attributes: ["id", "productName", "productPrice", "image", "stock"],
         },
         {
           model: Order,

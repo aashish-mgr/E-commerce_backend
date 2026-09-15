@@ -22,7 +22,7 @@ function uploadToCloudinary(buffer: Buffer, mimetype: string): Promise<string> {
 
 class productController {
   public static async createProduct(req: AuthRequest, res: Response) {
-    const { productName, productDescription, productPrice, categoryId } =
+    const { productName, productDescription, productPrice, categoryId, stock } =
       req.body;
     if (!productName || !productDescription || !productPrice || !categoryId) {
       return res.status(400).json({
@@ -37,6 +37,8 @@ class productController {
 
     const userId = req.user?.id;
 
+    const parsedStock = Math.max(0, Math.floor(Number(stock) || 0));
+
     const product = await Product.create({
       productName,
       productDescription,
@@ -44,6 +46,7 @@ class productController {
       userId,
       categoryId,
       image: imagePath,
+      stock: parsedStock,
     });
 
     return res.status(200).json({
@@ -132,7 +135,7 @@ class productController {
 
   public static async updateProduct(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    const { productName, productDescription, productPrice, categoryId } =
+    const { productName, productDescription, productPrice, categoryId, stock } =
       req.body;
     const file = req?.file;
     const updateData: Record<string, unknown> = {
@@ -141,6 +144,9 @@ class productController {
       productPrice,
       categoryId,
     };
+    if (stock !== undefined && stock !== "") {
+      updateData.stock = Math.max(0, Math.floor(Number(stock) || 0));
+    }
     if (file) {
       updateData.image = await uploadToCloudinary(file.buffer, file.mimetype);
     }

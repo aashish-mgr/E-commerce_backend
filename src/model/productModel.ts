@@ -38,6 +38,13 @@ class Product extends Model{
     declare image: string
 
     @Column({
+        type: DataType.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+    })
+    declare stock: number
+
+    @Column({
         type: DataType.UUID,
         allowNull: false
     })
