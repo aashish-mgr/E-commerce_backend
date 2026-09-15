@@ -3,17 +3,36 @@ import Product from "../model/productModel";
 import { AuthRequest } from "../middlewares/authMiddleware";
 import User from "../model/userModel";
 import Category from "../model/categoryModel";
+import cloudinary from "../config/cloudinary";
+
+function uploadToCloudinary(buffer: Buffer, mimetype: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const b64 = buffer.toString("base64");
+    const dataURI = `data:${mimetype};base64,${b64}`;
+    cloudinary.uploader.upload(
+      dataURI,
+      { folder: "ecommerce" },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result!.secure_url);
+      },
+    );
+  });
+}
 
 class productController {
   public static async createProduct(req: AuthRequest, res: Response) {
     const { productName, productDescription, productPrice, categoryId } =
       req.body;
-    const file = req?.file;
-    const imagePath = file ? file?.path : null;
     if (!productName || !productDescription || !productPrice || !categoryId) {
       return res.status(400).json({
         message: "Please provide all the details",
       });
+    }
+
+    let imagePath: string | null = null;
+    if (req.file) {
+      imagePath = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
     }
 
     const userId = req.user?.id;
@@ -115,6 +134,16 @@ class productController {
     const { id } = req.params;
     const { productName, productDescription, productPrice, categoryId } =
       req.body;
+    const file = req?.file;
+    const updateData: Record<string, unknown> = {
+      productName,
+      productDescription,
+      productPrice,
+      categoryId,
+    };
+    if (file) {
+      updateData.image = await uploadToCloudinary(file.buffer, file.mimetype);
+    }
 
     const product = await Product.findOne({ where: { id } });
 
@@ -130,10 +159,7 @@ class productController {
       });
     }
 
-    await Product.update(
-      { productName, productDescription, productPrice, categoryId },
-      { where: { id } },
-    );
+    await Product.update(updateData, { where: { id } });
 
     const updatedProduct = await Product.findOne({
       where: { id },

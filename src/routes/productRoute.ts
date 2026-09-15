@@ -28,6 +28,7 @@ router.route('/getSingle/:id').get(
 router.route('/update/:id').patch(
 	AuthMiddleware.isAuthenticated,
 	AuthMiddleware.permittedTo(Role.Vendor),
+	upload.single('image'),
 	handleError(productController.updateProduct)
 );
 router.route('/delete/:id').delete(
