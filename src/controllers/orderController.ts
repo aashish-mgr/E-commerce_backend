@@ -118,7 +118,7 @@ class OrderController {
         data,
         {
           headers: {
-            Authorization: "key ${envConfig.KHALTI_SECRET_KEY}",
+            Authorization: `key ${envConfig.KHALTI_SECRET_KEY}`,
           },
         },
       );
@@ -153,7 +153,7 @@ class OrderController {
       { pidx },
       {
         headers: {
-          Authorization: "key ${envConfig.KHALTI_SECRET_KEY}",
+          Authorization: `key ${envConfig.KHALTI_SECRET_KEY}`,
         },
       },
     );
