@@ -35,6 +35,7 @@ const connectDb = async () => {
     applyRelationship();
     await sequelize.sync({alter: false,force: false});
     await sequelize.query('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar" VARCHAR(255)');
+    await sequelize.query('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock" INTEGER NOT NULL DEFAULT 100');
     console.log("sequelize sync completed")
     User;
     }

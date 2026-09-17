@@ -1,32 +1,46 @@
 import Category from "../model/categoryModel";
 import { Request,Response } from "express";
-class CategoryController {
-  categoryData = [
-    {
-      categoryName: "Electronics",
-    },
-    {
-      categoryName: "Grocery",
-    },
-    {
-      categoryName: "Clothing",
-    },
-    {
-      categoryName: "Food/Beverages",
-    },
-    {
-      categoryName: "Utensils",
-    },
-  ];
 
-  async categorySeeder() {
-    const datas = await Category.findAll();
-    if (datas.length === 0) {
-      const data = await Category.bulkCreate(this.categoryData);
-      console.log("Category seeded successfully");
-    } else {
-      console.log("Category already seeded");
+const defaultCategories = [
+  {
+    categoryName: "Electronics",
+  },
+  {
+    categoryName: "Grocery",
+  },
+  {
+    categoryName: "Clothing",
+  },
+  {
+    categoryName: "Food/Beverages",
+  },
+  {
+    categoryName: "Utensils",
+  },
+];
+
+const seedCategories = async () => {
+  for (const category of defaultCategories) {
+    const [data, created] = await Category.findOrCreate({
+      where: { categoryName: category.categoryName },
+      defaults: category,
+    });
+    if (created) {
+      console.log(`Category "${data.categoryName}" seeded successfully`);
     }
+  }
+};
+
+class CategoryController {
+  async categorySeeder() {
+    await seedCategories();
+  }
+
+  async seedCategory(_req: Request,res: Response) {
+    await seedCategories();
+    return res.status(200).json({
+      message: "categories seeded successfully",
+    });
   }
 
   async createCategory(req: Request,res: Response) {

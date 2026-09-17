@@ -16,6 +16,13 @@ router
   .route("/getAll")
   .get(categoryController.getAllCategory);
 router
+  .route("/seed")
+  .post(
+    AuthMiddleware.isAuthenticated,
+    AuthMiddleware.permittedTo(Role.Vendor),
+    categoryController.seedCategory,
+  );
+router
   .route("/findAll")
   .get(
     AuthMiddleware.isAuthenticated,
