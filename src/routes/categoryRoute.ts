@@ -13,6 +13,9 @@ router
     categoryController.createCategory,
   );
 router
+  .route("/getAll")
+  .get(categoryController.getAllCategory);
+router
   .route("/findAll")
   .get(
     AuthMiddleware.isAuthenticated,

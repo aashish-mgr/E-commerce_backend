@@ -17,6 +17,8 @@ import User from "../model/userModel";
 import { envConfig } from "../config/env";
 import { ApiError } from "../services/asyncError";
 import { sequelize } from "../config/dbConfig";
+import { getPaginationMeta, getPaginationParams } from "../utils/pagination";
+import { Op } from "sequelize";
 class OrderController {
   //customer side
   async createOrder(req: AuthRequest, res: Response) {
@@ -194,10 +196,45 @@ class OrderController {
 
   async getMyOrders(req: AuthRequest, res: Response) {
     const userId = req.user?.id;
+    const { page, limit, skip } = getPaginationParams(
+      req.query.page as string | string[] | undefined,
+      req.query.limit as string | string[] | undefined,
+    );
+
+    const status = typeof req.query.status === "string" ? req.query.status : "";
+    const search = typeof req.query.search === "string" ? req.query.search : "";
+
+    const where: Record<string | symbol, unknown> = { userId };
+
+    if (status && status !== "all") {
+      where.orderStatus = status;
+    }
+
+    if (search) {
+      const productOrderRows = await OrderDetail.findAll({
+        attributes: ["orderId"],
+        include: [
+          {
+            model: Product,
+            attributes: [],
+            where: { productName: { [Op.iLike]: `%${search}%` } },
+          },
+        ],
+      });
+      const productOrderIds = [
+        ...new Set(productOrderRows.map((row) => (row as any).orderId)),
+      ];
+
+      where[Op.or] = [
+        { id: search },
+        ...(productOrderIds.length > 0
+          ? [{ id: { [Op.in]: productOrderIds } }]
+          : []),
+      ];
+    }
+
     const orders = await Order.findAll({
-      where: {
-        userId,
-      },
+      where,
       include: [
         {
           model: Payment,
@@ -207,17 +244,24 @@ class OrderController {
           include: [Product]
         }
       ],
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset: skip,
     });
-    if (orders.length > 0) {
-      return res.status(200).json({
-        message: "Orders fetched successfully",
-        data: orders,
-      });
-    } else {
-      return res.status(400).json({
-        message: "orders not found",
-      });
-    }
+
+    const total = await Order.count({
+      where,
+      col: "id",
+      distinct: true,
+    });
+
+    const pagination = getPaginationMeta(page, limit, total);
+
+    return res.status(200).json({
+      message: "Orders fetched successfully",
+      data: orders,
+      pagination,
+    });
   }
 
   async getOrderDetail(req: AuthRequest, res: Response) {
@@ -289,7 +333,63 @@ class OrderController {
   //admin side
   async getVendorOrders(req: AuthRequest, res: Response) {
     const userId = req.user?.id;
+    const { page, limit, skip } = getPaginationParams(
+      req.query.page as string | string[] | undefined,
+      req.query.limit as string | string[] | undefined,
+    );
+
+    const status = typeof req.query.status === "string" ? req.query.status : "";
+    const search = typeof req.query.search === "string" ? req.query.search : "";
+
+    const odWhere: Record<string | symbol, unknown> = {};
+
+    if (search) {
+      const searchTerm = `%${search}%`;
+
+      const matchingProductIds = (
+        await Product.findAll({
+          attributes: ["id"],
+          where: { userId, productName: { [Op.iLike]: searchTerm } },
+        })
+      ).map((p) => p.id);
+
+      const matchingOrderIds = (
+        await Order.findAll({
+          attributes: ["id"],
+          where: {
+            [Op.or]: [
+              { phoneNumber: { [Op.iLike]: searchTerm } },
+              { shippingAddress: { [Op.iLike]: searchTerm } },
+            ],
+          },
+        })
+      ).map((o) => o.id);
+
+      const conditions: Record<string, unknown>[] = [];
+      if (matchingProductIds.length > 0) {
+        conditions.push({ productId: { [Op.in]: matchingProductIds } });
+      }
+      if (matchingOrderIds.length > 0) {
+        conditions.push({ orderId: { [Op.in]: matchingOrderIds } });
+      }
+
+      if (conditions.length === 0) {
+        return res.status(200).json({
+          message: "orders successfully fetched",
+          data: [],
+          pagination: getPaginationMeta(page, limit, 0),
+        });
+      }
+      odWhere[Op.or] = conditions;
+    }
+
+    const orderWhere: Record<string, unknown> = {};
+    if (status && status !== "all") {
+      orderWhere.orderStatus = status;
+    }
+
     const orderDetails = await OrderDetail.findAll({
+      where: odWhere,
       include: [
         {
           model: Product,
@@ -298,19 +398,37 @@ class OrderController {
         },
         {
           model: Order,
+          where: orderWhere,
           include: [Payment, { model: User, attributes: ["id", "userName", "userEmail"] }],
         },
       ],
+      order: [[sequelize.col("Order.createdAt"), "DESC"]],
+      limit,
+      offset: skip,
     });
 
-    if (orderDetails.length > 0) {
-      return res.status(200).json({
-        message: "orders successfully fetched",
-        data: orderDetails,
-      });
-    }
-    return res.status(400).json({
-      message: "orders not found",
+    const total = await OrderDetail.count({
+      where: odWhere,
+      include: [
+        {
+          model: Product,
+          where: { userId },
+        },
+        {
+          model: Order,
+          where: orderWhere,
+        },
+      ],
+      col: "id",
+      distinct: true,
+    });
+
+    const pagination = getPaginationMeta(page, limit, total);
+
+    return res.status(200).json({
+      message: "orders successfully fetched",
+      data: orderDetails,
+      pagination,
     });
   }
 
@@ -322,6 +440,11 @@ class OrderController {
       });
     }
 
+    const { page, limit, skip } = getPaginationParams(
+      req.query.page as string | string[] | undefined,
+      req.query.limit as string | string[] | undefined,
+    );
+
     const orders = await OrderDetail.findAll({
       where: { productId },
       include: [
@@ -329,18 +452,20 @@ class OrderController {
           model: Order,
         },
       ],
+      order: [[sequelize.col("Order.createdAt"), "DESC"]],
+      limit,
+      offset: skip,
     });
 
-    if (orders.length > 0) {
-      return res.status(200).json({
-        message: "orders successfully fetched",
-        data: orders,
-      });
-    } else {
-      return res.status(400).json({
-        message: "orders not found for this product",
-      });
-    }
+    const total = await OrderDetail.count({ where: { productId } });
+
+    const pagination = getPaginationMeta(page, limit, total);
+
+    return res.status(200).json({
+      message: "orders successfully fetched",
+      data: orders,
+      pagination,
+    });
   }
 
   async getVendorOrderDetail(req: AuthRequest, res: Response) {
@@ -480,3 +605,4 @@ class OrderController {
 }
 
 export default new OrderController();
+

@@ -4,6 +4,8 @@ import { AuthRequest } from "../middlewares/authMiddleware";
 import User from "../model/userModel";
 import Category from "../model/categoryModel";
 import cloudinary from "../config/cloudinary";
+import { getPaginationMeta,getPaginationParams } from "../utils/pagination";
+import { Op } from "sequelize";
 
 function uploadToCloudinary(buffer: Buffer, mimetype: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -56,7 +58,31 @@ class productController {
   }
 
   public static async getProducts(req: Request, res: Response) {
+    
+    const { page, limit, skip } = getPaginationParams(
+      req.query.page as string | string[] | undefined,
+      req.query.limit as string | string[] | undefined,
+    );
+
+    const search = typeof req.query.search === "string" ? req.query.search : "";
+    const categoryId =
+      typeof req.query.categoryId === "string" ? req.query.categoryId : "";
+
+    const where: Record<string | symbol, unknown> = {};
+
+    if (search) {
+      where[Op.or] = [
+        { productName: { [Op.iLike]: `%${search}%` } },
+        { productDescription: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    if (categoryId) {
+      where.categoryId = categoryId;
+    }
+
     const products = await Product.findAll({
+      where,
       include: [
         {
           model: User,
@@ -67,35 +93,67 @@ class productController {
           attributes: ["categoryName"],
         },
       ],
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset: skip,
     });
 
-    if (!products) {
-      return res.status(400).json({
-        message: "no products found",
-      });
-    }
+    const total = await Product.count({ where });
+
+    const pagination = getPaginationMeta(page,limit,total)
 
     return res.status(200).json({
       data: products,
       message: "products fetched successfully",
+      pagination
     });
   }
 
   public static async getMyProducts(req: AuthRequest, res: Response) {
     const userId = req.user?.id;
+    const { page, limit, skip } = getPaginationParams(
+      req.query.page as string | string[] | undefined,
+      req.query.limit as string | string[] | undefined,
+    );
+
+    const search = typeof req.query.search === "string" ? req.query.search : "";
+    const categoryId =
+      typeof req.query.categoryId === "string" ? req.query.categoryId : "";
+
+    const where: Record<string | symbol, unknown> = { userId };
+
+    if (search) {
+      where[Op.or] = [
+        { productName: { [Op.iLike]: `%${search}%` } },
+        { productDescription: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    if (categoryId) {
+      where.categoryId = categoryId;
+    }
+
     const products = await Product.findAll({
-      where: { userId },
+      where,
       include: [
         {
           model: Category,
           attributes: ["id", "categoryName"],
         },
       ],
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset: skip,
     });
+
+    const total = await Product.count({ where });
+
+    const pagination = getPaginationMeta(page,limit,total)
 
     return res.status(200).json({
       data: products,
       message: "products fetched successfully",
+      pagination,
     });
   }
 
