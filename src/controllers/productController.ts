@@ -3,24 +3,9 @@ import Product from "../model/productModel";
 import { AuthRequest } from "../middlewares/authMiddleware";
 import User from "../model/userModel";
 import Category from "../model/categoryModel";
-import cloudinary from "../config/cloudinary";
 import { getPaginationMeta,getPaginationParams } from "../utils/pagination";
+import { uploadToCloudinary } from "../utils/uploadToCloudinary";
 import { Op } from "sequelize";
-
-function uploadToCloudinary(buffer: Buffer, mimetype: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const b64 = buffer.toString("base64");
-    const dataURI = `data:${mimetype};base64,${b64}`;
-    cloudinary.uploader.upload(
-      dataURI,
-      { folder: "ecommerce" },
-      (error, result) => {
-        if (error) return reject(error);
-        resolve(result!.secure_url);
-      },
-    );
-  });
-}
 
 class productController {
   public static async createProduct(req: AuthRequest, res: Response) {

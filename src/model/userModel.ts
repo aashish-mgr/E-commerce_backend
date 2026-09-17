@@ -51,6 +51,12 @@ class User extends Model {
         defaultValue: "local"
     })
     declare provider: string
+
+    @Column({
+        type: DataType.STRING,
+        allowNull: true
+    })
+    declare avatar: string
 }
 
 export default User;

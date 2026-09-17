@@ -3,6 +3,17 @@ import User from "../model/userModel";
 import bcrypt from 'bcryptjs'
 import * as jwt from 'jsonwebtoken'
 import { AuthRequest } from "../middlewares/authMiddleware";
+import { uploadToCloudinary } from "../utils/uploadToCloudinary";
+
+const toSafeUser = (user: User) => ({
+    id: user.id,
+    userName: user.userName,
+    userEmail: user.userEmail,
+    userRole: user.userRole,
+    googleId: user.googleId,
+    provider: user.provider,
+    avatar: user.avatar,
+});
 
 class AuthController {
 public static async registerUser(req:Request,res:Response) {
@@ -64,14 +75,7 @@ public static async registerUser(req:Request,res:Response) {
         sameSite: 'lax'
     })
 
-    const safeUser = {
-        id: user.id,
-        userName: user.userName,
-        userEmail: user.userEmail,
-        userRole: user.userRole,
-        googleId: user.googleId,
-        provider: user.provider,
-    };
+    const safeUser = toSafeUser(user);
 
     return res.status(200).json({
         data: safeUser,
@@ -86,17 +90,95 @@ public static async registerUser(req:Request,res:Response) {
                 message: "user not found"
             })
         }
-        const safeUser = {
-            id: user.id,
-            userName: user.userName,
-            userEmail: user.userEmail,
-            userRole: user.userRole,
-            googleId: user.googleId,
-            provider: user.provider,
-        };
+        const safeUser = toSafeUser(user);
         return res.status(200).json({
             data: safeUser,
             message: "user profile fetched successfully"
+        })
+    }
+
+    public static async updateUserProfile(req:AuthRequest,res:Response) {
+        const userId = req.user?.id;
+        const {userName,userEmail} = req.body;
+
+        if(!userName || !userEmail) {
+            return res.status(400).json({
+                message: "provide all the details"
+            })
+        }
+
+        const user = await User.findByPk(userId);
+        if(!user) {
+            return res.status(400).json({
+                message: "user not found"
+            })
+        }
+
+        if(userEmail !== user.userEmail) {
+            const existingUser = await User.findOne({where: {userEmail}});
+            if(existingUser) {
+                return res.status(400).json({
+                    message: "Email already in use"
+                })
+            }
+        }
+
+        user.userName = userName;
+        user.userEmail = userEmail;
+
+        if(req.file) {
+            user.avatar = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+        }
+
+        await user.save();
+
+        return res.status(200).json({
+            data: toSafeUser(user),
+            message: "profile updated successfully"
+        })
+    }
+
+    public static async changePassword(req:AuthRequest,res:Response) {
+        const userId = req.user?.id;
+        const {currentPassword,newPassword} = req.body;
+
+        if(!currentPassword || !newPassword) {
+            return res.status(400).json({
+                message: "provide all the details"
+            })
+        }
+
+        if(newPassword.length < 6) {
+            return res.status(400).json({
+                message: "Password must be at least 6 characters"
+            })
+        }
+
+        const user = await User.findByPk(userId);
+        if(!user) {
+            return res.status(400).json({
+                message: "user not found"
+            })
+        }
+
+        if(!user.userPassword || user.provider === "google") {
+            return res.status(400).json({
+                message: "Password change is not available for Google accounts"
+            })
+        }
+
+        const isPasswordValid = bcrypt.compareSync(currentPassword,user.userPassword);
+        if(!isPasswordValid) {
+            return res.status(400).json({
+                message: "Current password is incorrect"
+            })
+        }
+
+        user.userPassword = bcrypt.hashSync(newPassword,10);
+        await user.save();
+
+        return res.status(200).json({
+            message: "password changed successfully"
         })
     }
 
