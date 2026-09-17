@@ -12,7 +12,7 @@ import * as dotenv from 'dotenv'
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
-
+import { generalLimiter,authLimiter } from './middlewares/rateLimiter';
 
 
 dotenv.config();
@@ -37,11 +37,11 @@ app.use(
   "/uploads",
   express.static(path.join(process.cwd(), "src/uploads"))
 );
-app.use('/auth',userRoute);
-app.use('/product',productRoute);
-app.use('/category',categoryRoute);
-app.use('/cart',cartRoute);
-app.use('/order',orderRoute);
+app.use('/auth',authLimiter,userRoute);
+app.use('/product',generalLimiter,productRoute);
+app.use('/category',generalLimiter,categoryRoute);
+app.use('/cart',generalLimiter,cartRoute);
+app.use('/order',generalLimiter,orderRoute);
 
 app.use(notFound);
 app.use(errorHandler);
