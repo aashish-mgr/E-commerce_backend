@@ -15,3 +15,10 @@ export const authLimiter = rateLimit({
         message: "Too many requests.Please try again later."
     }
 })
+export const refreshLimiter = rateLimit({
+    windowMs: 10*60*1000,
+    limit: 30,
+    message: {
+        message: "Too many refresh requests. Please try again later."
+    }
+})

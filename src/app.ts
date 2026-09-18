@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import {connectDb} from './config/dbConfig'
 import userRoute from './routes/userRoute'
 import productRoute from './routes/productRoute'
@@ -37,7 +37,14 @@ app.use(
   "/uploads",
   express.static(path.join(process.cwd(), "src/uploads"))
 );
-app.use('/auth',authLimiter,userRoute);
+app.use(
+  '/auth',
+  (req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/refresh') return next();
+    authLimiter(req, res, next);
+  },
+  userRoute
+);
 app.use('/product',generalLimiter,productRoute);
 app.use('/category',generalLimiter,categoryRoute);
 app.use('/cart',generalLimiter,cartRoute);
