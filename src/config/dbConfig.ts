@@ -8,6 +8,7 @@ import { applyRelationship } from '../model';
 import Order from '../model/orderModel';
 import OrderDetail from '../model/orderDetailModel';
 import Payment from '../model/paymentModel';
+import RefreshToken from '../model/refreshTokenModel';
 import { envConfig } from './env';
 
 const DATABASE_URL = envConfig.DATABASE_URL;
@@ -18,7 +19,7 @@ if (!DATABASE_URL) {
 const sequelize = new Sequelize(DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres',
-    models: [User, Product,Category,Cart,Order,OrderDetail,Payment],
+    models: [User, Product,Category,Cart,Order,OrderDetail,Payment,RefreshToken],
     logging: console.log,
     dialectOptions: {
         ssl: {

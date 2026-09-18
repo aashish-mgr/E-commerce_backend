@@ -5,6 +5,7 @@ import Cart from './cartModel'
 import Order from "./orderModel";
 import OrderDetail from "./orderDetailModel";
 import Payment from "./paymentModel";
+import RefreshToken from "./refreshTokenModel";
 
 
 export function applyRelationship () {
@@ -31,6 +32,9 @@ Order.belongsTo(Payment,{foreignKey: 'paymentId'});
 
 User.hasMany(Order,{foreignKey: 'userId'});
 Order.belongsTo(User,{foreignKey: 'userId'});
+
+User.hasMany(RefreshToken,{foreignKey: 'userId'});
+RefreshToken.belongsTo(User,{foreignKey: 'userId'});
 
 }
 
