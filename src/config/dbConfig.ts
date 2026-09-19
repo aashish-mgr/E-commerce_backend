@@ -37,6 +37,12 @@ const connectDb = async () => {
     await sequelize.sync({alter: false,force: false});
     await sequelize.query('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar" VARCHAR(255)');
     await sequelize.query('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock" INTEGER NOT NULL DEFAULT 100');
+    await sequelize.query(`DO $$
+      BEGIN
+        ALTER TYPE "enum_users_userRole" ADD VALUE IF NOT EXISTS 'admin';
+      EXCEPTION
+        WHEN duplicate_object THEN NULL;
+      END $$;`);
     console.log("sequelize sync completed")
     User;
     }

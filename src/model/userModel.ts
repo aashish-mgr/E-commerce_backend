@@ -34,7 +34,7 @@ class User extends Model {
     })
     declare userPassword:string
     @Column({
-        type: DataType.ENUM("vendor","customer"),
+        type: DataType.ENUM("admin","vendor","customer"),
         defaultValue: "customer",
         allowNull: false
     })

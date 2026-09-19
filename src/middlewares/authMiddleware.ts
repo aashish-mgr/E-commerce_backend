@@ -14,6 +14,7 @@ import { EnumDataType } from "sequelize";
 }
 
 export enum  Role{
+    Admin = "admin",
     Vendor = "vendor",
     Customer = "customer"
 }
