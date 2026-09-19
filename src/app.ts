@@ -7,6 +7,7 @@ import { adminSeeder } from './adminSeed';
 import CategoryController from './controllers/categoryController';
 import cartRoute from './routes/cartRoute'
 import orderRoute from './routes/orderRoute'
+import adminRoute from './routes/adminRoute'
 import { notFound, errorHandler } from './middlewares/errorHandler';
 import * as dotenv from 'dotenv'
 import cors from 'cors';
@@ -49,6 +50,7 @@ app.use('/product',generalLimiter,productRoute);
 app.use('/category',generalLimiter,categoryRoute);
 app.use('/cart',generalLimiter,cartRoute);
 app.use('/order',generalLimiter,orderRoute);
+app.use('/admin',generalLimiter,adminRoute);
 
 app.use(notFound);
 app.use(errorHandler);
