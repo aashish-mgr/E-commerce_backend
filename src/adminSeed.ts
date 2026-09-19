@@ -5,13 +5,17 @@ const adminSeeder = async () => {
     try { 
         const existingUser =await User.findOne({where: {userEmail: envConfig.ADMIN_EMAIL }});
     if(existingUser) {
+        if (existingUser.userRole !== "admin") {
+            await existingUser.update({ userRole: "admin" });
+            console.log("Admin role promoted");
+        }
         return
     }
     await User.create({
         userName: "admin",
         userEmail: envConfig.ADMIN_EMAIL,
         userPassword: bcrypt.hashSync(envConfig.ADMIN_PASSWORD as string,10),
-        userRole: "vendor"
+        userRole: "admin"
     })
     console.log("Admin seeded successfully");
 }
