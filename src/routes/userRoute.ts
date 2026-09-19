@@ -15,6 +15,7 @@ router.route('/updateProfile').patch(AuthMiddleware.isAuthenticated,upload.singl
 router.route('/changePassword').patch(AuthMiddleware.isAuthenticated,handleError(AuthController.changePassword));
 router.route('/logout').post(AuthMiddleware.isAuthenticated,handleError(AuthController.logoutUser));
 router.route('/refresh').post(refreshLimiter, handleError(AuthController.refreshAccessToken));
+router.route('/session').get(handleError(AuthController.restoreSession));
 
 router.route('/google').get(handleError(oauthController.getAuthUrl));
 router.route('/google/callback').get(handleError(oauthController.googleCallback));

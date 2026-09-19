@@ -1,9 +1,11 @@
 import { Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import User from "../model/userModel";
 import bcrypt from "bcryptjs";
 import { AuthRequest as AuthRequestType } from "../middlewares/authMiddleware";
 import { uploadToCloudinary } from "../utils/uploadToCloudinary";
 import TokenService from "../services/tokenService";
+import { envConfig } from "../config/env";
 import {
   generateAccessToken,
   setAuthCookies,
@@ -203,6 +205,54 @@ class AuthController {
     setAuthCookies(res, { accessToken, refreshToken });
     return res.status(200).json({
       message: "tokens refreshed successfully",
+    });
+  }
+
+  public static async restoreSession(req: Request, res: Response) {
+    const accessToken: string | undefined = req.cookies?.accessToken;
+    const refreshToken: string | undefined = req.cookies?.refreshToken;
+
+    if (accessToken) {
+      try {
+        const decoded = jwt.verify(
+          accessToken,
+          envConfig.JWT_SECRET_KEY
+        ) as jwt.JwtPayload;
+        const user = decoded?.id ? await User.findByPk(decoded.id) : null;
+        if (user) {
+          return res.status(200).json({
+            data: toSafeUser(user),
+            message: "session restored",
+          });
+        }
+      } catch {
+        // access token invalid or expired — fall through to refresh rotation
+      }
+    }
+
+    if (refreshToken) {
+      try {
+        const { accessToken: newAccessToken, refreshToken: newRefreshToken } =
+          await TokenService.rotateRefreshToken(refreshToken);
+        const decoded = jwt.decode(newAccessToken) as jwt.JwtPayload;
+        const user = decoded?.id ? await User.findByPk(decoded.id) : null;
+        if (user) {
+          setAuthCookies(res, {
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+          });
+          return res.status(200).json({
+            data: toSafeUser(user),
+            message: "session restored",
+          });
+        }
+      } catch {
+        // refresh token invalid or expired — no session
+      }
+    }
+
+    return res.status(401).json({
+      message: "No valid session, please login",
     });
   }
 }
