@@ -24,6 +24,7 @@
     "multer-storage-cloudinary": "^4.0.0",
     "nodemon": "^3.1.14",
     "pg": "^8.20.0",
+    "redis": "^6.2.1",
     "sequelize": "^6.37.8",
     "sequelize-typescript": "^2.1.6",
     "tsc-node": "^0.0.3",

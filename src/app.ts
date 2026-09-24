@@ -14,6 +14,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { generalLimiter,authLimiter } from './middlewares/rateLimiter';
+import { connectRedis } from './config/redis';
 
 
 dotenv.config();
@@ -56,7 +57,17 @@ app.use(notFound);
 app.use(errorHandler);
 
 
-app.listen(3000,() => {
+const startServer =async () => {
+  try {
+  await connectRedis();
+   app.listen(3000,() => {
     console.log("sever is listening on port 3000");
 })
+  }
+  catch(error) {
+      console.error("Failed to start server:", error);
+  }
+}
+
+startServer();
 
