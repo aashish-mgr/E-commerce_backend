@@ -3,9 +3,16 @@ import Product from "../model/productModel";
 import { AuthRequest } from "../middlewares/authMiddleware";
 import User from "../model/userModel";
 import Category from "../model/categoryModel";
-import { getPaginationMeta,getPaginationParams } from "../utils/pagination";
+import { getPaginationMeta, getPaginationParams } from "../utils/pagination";
 import { uploadToCloudinary } from "../utils/uploadToCloudinary";
 import { Op } from "sequelize";
+import {
+  deleteCache,
+  generateCacheKey,
+  getCacheVersion,
+  incrementCacheVersion,
+  setOrGetCache,
+} from "../utils/redisHelper";
 
 class productController {
   public static async createProduct(req: AuthRequest, res: Response) {
@@ -36,6 +43,8 @@ class productController {
       stock: parsedStock,
     });
 
+    await incrementCacheVersion("product");
+
     return res.status(200).json({
       data: product,
       message: "product added successfully",
@@ -43,15 +52,17 @@ class productController {
   }
 
   public static async getProducts(req: Request, res: Response) {
-    
     const { page, limit, skip } = getPaginationParams(
       req.query.page as string | string[] | undefined,
       req.query.limit as string | string[] | undefined,
     );
 
-    const search = typeof req.query.search === "string" ? req.query.search : "";
+    const search =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
     const categoryId =
-      typeof req.query.categoryId === "string" ? req.query.categoryId : "";
+      typeof req.query.categoryId === "string"
+        ? req.query.categoryId.trim()
+        : "";
 
     const where: Record<string | symbol, unknown> = {};
 
@@ -66,31 +77,48 @@ class productController {
       where.categoryId = categoryId;
     }
 
-    const products = await Product.findAll({
-      where,
-      include: [
-        {
-          model: User,
-          attributes: ["userName", "userEmail"],
-        },
-        {
-          model: Category,
-          attributes: ["categoryName"],
-        },
-      ],
-      order: [["createdAt", "DESC"]],
+    const version = await getCacheVersion("product");
+
+    const cacheKey = generateCacheKey(`product:v${version}`, {
+      page,
       limit,
-      offset: skip,
+      search,
+      categoryId,
     });
 
-    const total = await Product.count({ where });
+    const result = await setOrGetCache(cacheKey, 60, async () => {
+      const [products, total] = await Promise.all([
+        Product.findAll({
+          where,
+          include: [
+            {
+              model: User,
+              attributes: ["userName", "userEmail"],
+            },
+            {
+              model: Category,
+              attributes: ["categoryName"],
+            },
+          ],
+          order: [
+            ["createdAt", "DESC"],
+            ["id", "DESC"],
+          ],
+          limit,
+          offset: skip,
+        }),
+        Product.count({ where }),
+      ]);
 
-    const pagination = getPaginationMeta(page,limit,total)
+      return {
+        data: products,
+        pagination: getPaginationMeta(page, limit, total),
+      };
+    });
 
     return res.status(200).json({
-      data: products,
+      ...result,
       message: "products fetched successfully",
-      pagination
     });
   }
 
@@ -133,7 +161,7 @@ class productController {
 
     const total = await Product.count({ where });
 
-    const pagination = getPaginationMeta(page,limit,total)
+    const pagination = getPaginationMeta(page, limit, total);
 
     return res.status(200).json({
       data: products,
@@ -224,6 +252,8 @@ class productController {
       ],
     });
 
+    await incrementCacheVersion("product");
+
     return res.status(200).json({
       data: updatedProduct,
       message: "product updated successfully",
@@ -248,7 +278,8 @@ class productController {
     }
 
     await Product.destroy({ where: { id } });
-
+    
+    await incrementCacheVersion("product")
     return res.status(200).json({
       message: "product deleted successfully",
     });
