@@ -17,6 +17,7 @@ const schema = z.object({
     KHALTI_SECRET_KEY: z.string().min(1, "KHALTI_SECRET_KEY is required"),
     ACCESS_TOKEN_EXPIRES_IN: z.string().optional(),
     REFRESH_TOKEN_EXPIRES_IN: z.string().optional(),
+    REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
 })
 
 const parsed = schema.safeParse(process.env);
@@ -40,4 +41,5 @@ export const envConfig = {
     KHALTI_SECRET_KEY: parsed.data.KHALTI_SECRET_KEY,
     ACCESS_TOKEN_EXPIRES_IN: parsed.data.ACCESS_TOKEN_EXPIRES_IN ?? '15m',
     REFRESH_TOKEN_EXPIRES_IN: parsed.data.REFRESH_TOKEN_EXPIRES_IN ?? '20d',
+    REDIS_URL: parsed.data.REDIS_URL,
 }

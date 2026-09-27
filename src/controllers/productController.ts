@@ -7,7 +7,6 @@ import { getPaginationMeta, getPaginationParams } from "../utils/pagination";
 import { uploadToCloudinary } from "../utils/uploadToCloudinary";
 import { Op } from "sequelize";
 import {
-  deleteCache,
   generateCacheKey,
   getCacheVersion,
   incrementCacheVersion,

@@ -59,14 +59,16 @@ app.use(errorHandler);
 
 const startServer =async () => {
   try {
-  await connectRedis();
-   app.listen(3000,() => {
+    await connectRedis();
+  } catch (error) {
+    // The cache helpers are fail-open, so the API still serves requests
+    // without Redis, just without caching.
+    console.error("Redis unavailable, continuing without cache:", error);
+  }
+
+  app.listen(3000,() => {
     console.log("sever is listening on port 3000");
-})
-  }
-  catch(error) {
-      console.error("Failed to start server:", error);
-  }
+  })
 }
 
 startServer();
