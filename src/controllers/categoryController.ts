@@ -1,5 +1,6 @@
 import Category from "../model/categoryModel";
 import { Request,Response } from "express";
+import { CACHE_TTL,generateCacheKey,getCacheVersion,incrementCacheVersion,setOrGetCache } from "../utils/redisHelper";
 
 const defaultCategories = [
   {
@@ -52,14 +53,21 @@ class CategoryController {
       }
 
       await Category.create({categoryName});
+
+      await incrementCacheVersion("category");
       res.status(200).json({
         message: "new category successfully created"
       })
   }
 
-  async getAllCategory(req:Request,res:Response) {
-      const data = await Category.findAll();
-      if(!data) {
+  async getAllCategory(_req:Request,res:Response) {
+     const version = await getCacheVersion("category");
+     // The query takes no filters, so the key must not vary on req.query
+     // either - otherwise every distinct querystring caches the same rows.
+     const cacheKey = generateCacheKey(`category:v${version}`);
+
+      const data =  await setOrGetCache(cacheKey,CACHE_TTL.category,() => Category.findAll());
+      if(!data || data.length === 0) {
         return res.status(400).json({
             message: "no categories to show"
         })
@@ -86,6 +94,7 @@ class CategoryController {
        }
 
        await Category.destroy({where: {id: categoryId}});
+       await incrementCacheVersion("category")
        res.status(200).json({
         message: "Category successfully deleted"
        })
@@ -112,7 +121,8 @@ class CategoryController {
       });
 
       const updatedData = await Category.findOne({where: {id: categoryId}})
-
+      
+      await incrementCacheVersion("category")
       return res.status(200).json({
         message: "Category successfully updated",
         updatedData
