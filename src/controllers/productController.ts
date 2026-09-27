@@ -7,6 +7,7 @@ import { getPaginationMeta, getPaginationParams } from "../utils/pagination";
 import { uploadToCloudinary } from "../utils/uploadToCloudinary";
 import { Op } from "sequelize";
 import {
+  CACHE_TTL,
   generateCacheKey,
   getCacheVersion,
   incrementCacheVersion,
@@ -85,7 +86,7 @@ class productController {
       categoryId,
     });
 
-    const result = await setOrGetCache(cacheKey, 60, async () => {
+    const result = await setOrGetCache(cacheKey, CACHE_TTL.productList, async () => {
       const [products, total] = await Promise.all([
         Product.findAll({
           where,
@@ -177,19 +178,24 @@ class productController {
       });
     }
 
-    const product = await Product.findOne({
-      where: { id },
-      include: [
-        {
-          model: User,
-          attributes: ["userName", "userEmail"],
-        },
-        {
-          model: Category,
-          attributes: ["categoryName"],
-        },
-      ],
-    });
+    const version = await getCacheVersion("product");
+    const cacheKey = generateCacheKey(`product:single:v${version}`, { id });
+
+    const product = await setOrGetCache(cacheKey, CACHE_TTL.productSingle, () =>
+      Product.findOne({
+        where: { id },
+        include: [
+          {
+            model: User,
+            attributes: ["userName", "userEmail"],
+          },
+          {
+            model: Category,
+            attributes: ["categoryName"],
+          },
+        ],
+      }),
+    );
 
     if (!product) {
       return res.status(400).json({

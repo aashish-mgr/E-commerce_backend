@@ -1,16 +1,24 @@
-import jwt from "jsonwebtoken";
-import User from "../model/userModel";
+ import jwt from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
 import { EnumDataType } from "sequelize";
+import { getCachedUser } from "../utils/userCache";
 
- export interface AuthRequest extends Request {
-    user?: {
-        id: string,
-        userName: string,
-        userEmail: string,
-        userPassword: string,
-        userRole: string
-    }
+ // Mirrors the columns on the User model. The row is served from cache as a
+// plain object rather than a Sequelize instance, so this is a plain shape
+// rather than the model class.
+export type AuthUser = {
+    id: string,
+    userName: string,
+    userEmail: string,
+    userPassword: string,
+    userRole: string,
+    googleId: string,
+    provider: string,
+    avatar: string,
+}
+
+export interface AuthRequest extends Request {
+    user?: AuthUser
 }
 
 export enum  Role{
@@ -37,7 +45,7 @@ class AuthMiddleware {
       }
 
       try {
-        const userData = await User.findByPk(decoded.id);
+        const userData = await getCachedUser(decoded.id);
         if (!userData) {
           return res.status(400).json({
             message: "user not found",

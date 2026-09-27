@@ -11,10 +11,17 @@ import {
   setAuthCookies,
   clearAuthCookies,
 } from "../utils/tokenUtils";
+import { incrementCacheVersion } from "../utils/redisHelper";
+import { getCachedUser, USER_CACHE_RESOURCE } from "../utils/userCache";
 
 interface AuthRequest extends AuthRequestType {}
 
-const toSafeUser = (user: User) => ({
+type SafeUserSource = Pick<
+  User,
+  "id" | "userName" | "userEmail" | "userRole" | "googleId" | "provider" | "avatar"
+>;
+
+const toSafeUser = (user: SafeUserSource) => ({
   id: user.id,
   userName: user.userName,
   userEmail: user.userEmail,
@@ -92,8 +99,9 @@ class AuthController {
   }
 
   public static async getProfile(req: AuthRequest, res: Response) {
-    const userId = req.user?.id;
-    const user = await User.findByPk(userId);
+    // The auth middleware already resolved (and cached) this user, so there
+    // is no second lookup to make.
+    const user = req.user;
     if (!user) {
       return res.status(400).json({
         message: "user not found",
@@ -141,6 +149,8 @@ class AuthController {
 
     await user.save();
 
+    await incrementCacheVersion(USER_CACHE_RESOURCE);
+
     return res.status(200).json({
       data: toSafeUser(user),
       message: "profile updated successfully",
@@ -186,6 +196,8 @@ class AuthController {
     user.userPassword = bcrypt.hashSync(newPassword, 10);
     await user.save();
 
+    await incrementCacheVersion(USER_CACHE_RESOURCE);
+
     return res.status(200).json({
       message: "password changed successfully",
     });
@@ -218,7 +230,7 @@ class AuthController {
           accessToken,
           envConfig.JWT_SECRET_KEY
         ) as jwt.JwtPayload;
-        const user = decoded?.id ? await User.findByPk(decoded.id) : null;
+        const user = decoded?.id ? await getCachedUser(decoded.id) : null;
         if (user) {
           return res.status(200).json({
             data: toSafeUser(user),
@@ -235,7 +247,7 @@ class AuthController {
         const { accessToken: newAccessToken, refreshToken: newRefreshToken } =
           await TokenService.rotateRefreshToken(refreshToken);
         const decoded = jwt.decode(newAccessToken) as jwt.JwtPayload;
-        const user = decoded?.id ? await User.findByPk(decoded.id) : null;
+        const user = decoded?.id ? await getCachedUser(decoded.id) : null;
         if (user) {
           setAuthCookies(res, {
             accessToken: newAccessToken,

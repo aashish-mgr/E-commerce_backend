@@ -9,7 +9,7 @@ import Cart from "../model/cartModel";
 import Order from "../model/orderModel";
 import OrderDetail from "../model/orderDetailModel";
 import Payment from "../model/paymentModel";
-import { incrementCacheVersions } from "../utils/redisHelper";
+import { incrementCacheVersions, CACHE_TTL, generateCacheKey, getCacheVersion, setOrGetCache } from "../utils/redisHelper";
 
 const VALID_ROLES = ["admin", "vendor", "customer"];
 const LOW_STOCK_THRESHOLD = 5;
@@ -31,108 +31,110 @@ const toSafeUser = (user: User) => ({
 
 class AdminController {
   async getStats(_req: Request, res: Response) {
-    const [
-      totalUsers,
-      totalVendors,
-      totalCustomers,
-      totalAdmins,
-      totalProducts,
-      totalOrders,
-      totalCategories,
-      pendingOrders,
-      deliveredOrders,
-      cancelledOrders,
-      lowStockProducts,
-    ] = await Promise.all([
-      User.count(),
-      User.count({ where: { userRole: "vendor" } }),
-      User.count({ where: { userRole: "customer" } }),
-      User.count({ where: { userRole: "admin" } }),
-      Product.count(),
-      Order.count(),
-      Category.count(),
-      Order.count({ where: { orderStatus: "pending" } }),
-      Order.count({ where: { orderStatus: "delivered" } }),
-      Order.count({ where: { orderStatus: "cancelled" } }),
-      Product.count({ where: { stock: { [Op.lte]: LOW_STOCK_THRESHOLD } } }),
-    ]);
+    const version = await getCacheVersion(STATS);
+    const cacheKey = generateCacheKey(`${STATS}:v${version}`);
 
-    const totalRevenue =
-      (await Order.sum("totalAmount", {
-        where: { orderStatus: { [Op.ne]: "cancelled" } },
-      })) ?? 0;
+    const data = await setOrGetCache(cacheKey, CACHE_TTL.adminStats, async () => {
+      const [
+        totalUsers,
+        totalVendors,
+        totalCustomers,
+        totalAdmins,
+        totalProducts,
+        totalOrders,
+        totalCategories,
+        pendingOrders,
+        deliveredOrders,
+        cancelledOrders,
+        lowStockProducts,
+      ] = await Promise.all([
+        User.count(),
+        User.count({ where: { userRole: "vendor" } }),
+        User.count({ where: { userRole: "customer" } }),
+        User.count({ where: { userRole: "admin" } }),
+        Product.count(),
+        Order.count(),
+        Category.count(),
+        Order.count({ where: { orderStatus: "pending" } }),
+        Order.count({ where: { orderStatus: "delivered" } }),
+        Order.count({ where: { orderStatus: "cancelled" } }),
+        Product.count({ where: { stock: { [Op.lte]: LOW_STOCK_THRESHOLD } } }),
+      ]);
 
-    const days = 7;
-    const periodStart = new Date();
-    periodStart.setHours(0, 0, 0, 0);
-    periodStart.setDate(periodStart.getDate() - (days - 1));
+      const totalRevenue =
+        (await Order.sum("totalAmount", {
+          where: { orderStatus: { [Op.ne]: "cancelled" } },
+        })) ?? 0;
 
-    const rangeOrders = await Order.findAll({
-      where: {
-        createdAt: { [Op.gte]: periodStart },
-        orderStatus: { [Op.ne]: "cancelled" },
-      },
-      attributes: ["createdAt", "totalAmount"],
-    });
+      const days = 7;
+      const periodStart = new Date();
+      periodStart.setHours(0, 0, 0, 0);
+      periodStart.setDate(periodStart.getDate() - (days - 1));
 
-    const salesTrend = Array.from({ length: days }, (_, i) => {
-      const date = new Date(periodStart);
-      date.setDate(periodStart.getDate() + i);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-      return { date: key, revenue: 0, orders: 0 };
-    });
-
-    for (const order of rangeOrders) {
-      const created = new Date(order.createdAt);
-      const key = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}-${String(created.getDate()).padStart(2, "0")}`;
-      const bucket = salesTrend.find((t) => t.date === key);
-      if (bucket) {
-        bucket.revenue += Number(order.totalAmount) || 0;
-        bucket.orders += 1;
-      }
-    }
-
-    const recentOrders = await Order.findAll({
-      include: [
-        { model: Payment },
-        {
-          model: OrderDetail,
-          include: [
-            {
-              model: Product,
-              attributes: [
-                "id",
-                "productName",
-                "productPrice",
-                "image",
-                "stock",
-              ],
-            },
-          ],
+      const rangeOrders = await Order.findAll({
+        where: {
+          createdAt: { [Op.gte]: periodStart },
+          orderStatus: { [Op.ne]: "cancelled" },
         },
-        { model: User, attributes: ["id", "userName", "userEmail"] },
-      ],
-      order: [["createdAt", "DESC"]],
-      limit: 5,
-    });
+        attributes: ["createdAt", "totalAmount"],
+      });
 
-    const recentUsers = await User.findAll({
-      attributes: [
-        "id",
-        "userName",
-        "userEmail",
-        "userRole",
-        "provider",
-        "avatar",
-        "createdAt",
-      ],
-      order: [["createdAt", "DESC"]],
-      limit: 5,
-    });
+      const salesTrend = Array.from({ length: days }, (_, i) => {
+        const date = new Date(periodStart);
+        date.setDate(periodStart.getDate() + i);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        return { date: key, revenue: 0, orders: 0 };
+      });
 
-    return res.status(200).json({
-      message: "admin stats fetched successfully",
-      data: {
+      for (const order of rangeOrders) {
+        const created = new Date(order.createdAt);
+        const key = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}-${String(created.getDate()).padStart(2, "0")}`;
+        const bucket = salesTrend.find((t) => t.date === key);
+        if (bucket) {
+          bucket.revenue += Number(order.totalAmount) || 0;
+          bucket.orders += 1;
+        }
+      }
+
+      const recentOrders = await Order.findAll({
+        include: [
+          { model: Payment },
+          {
+            model: OrderDetail,
+            include: [
+              {
+                model: Product,
+                attributes: [
+                  "id",
+                  "productName",
+                  "productPrice",
+                  "image",
+                  "stock",
+                ],
+              },
+            ],
+          },
+          { model: User, attributes: ["id", "userName", "userEmail"] },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: 5,
+      });
+
+      const recentUsers = await User.findAll({
+        attributes: [
+          "id",
+          "userName",
+          "userEmail",
+          "userRole",
+          "provider",
+          "avatar",
+          "createdAt",
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: 5,
+      });
+
+      return {
         totalUsers,
         totalVendors,
         totalCustomers,
@@ -148,7 +150,12 @@ class AdminController {
         salesTrend,
         recentOrders,
         recentUsers,
-      },
+      };
+    });
+
+    return res.status(200).json({
+      message: "admin stats fetched successfully",
+      data,
     });
   }
 
@@ -301,22 +308,38 @@ class AdminController {
       where.categoryId = categoryId;
     }
 
-    const products = await Product.findAndCountAll({
-      where,
-      include: [
-        {
-          model: User,
-          attributes: ["id", "userName", "userEmail"],
-        },
-        {
-          model: Category,
-          attributes: ["id", "categoryName"],
-        },
-      ],
-      order: [["createdAt", "DESC"]],
+    // Same rows as the public product list but a different projection and
+    // order, so it gets its own key - sharing one would hand the wrong shape
+    // to one of the two endpoints.
+    const version = await getCacheVersion("product");
+    const cacheKey = generateCacheKey(`product:admin:v${version}`, {
+      page,
       limit,
-      offset: skip,
+      search,
+      categoryId,
     });
+
+    const products = await setOrGetCache(
+      cacheKey,
+      CACHE_TTL.productList,
+      () =>
+        Product.findAndCountAll({
+          where,
+          include: [
+            {
+              model: User,
+              attributes: ["id", "userName", "userEmail"],
+            },
+            {
+              model: Category,
+              attributes: ["id", "categoryName"],
+            },
+          ],
+          order: [["createdAt", "DESC"]],
+          limit,
+          offset: skip,
+        }),
+    );
 
     return res.status(200).json({
       message: "products fetched successfully",
