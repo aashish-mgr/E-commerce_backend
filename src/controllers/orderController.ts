@@ -18,6 +18,7 @@ import { envConfig } from "../config/env";
 import { ApiError } from "../services/asyncError";
 import { sequelize } from "../config/dbConfig";
 import { getPaginationMeta, getPaginationParams } from "../utils/pagination";
+import { incrementCacheVersions } from "../utils/redisHelper";
 import { Op } from "sequelize";
 class OrderController {
   //customer side
@@ -107,6 +108,10 @@ class OrderController {
       },
     );
 
+    // The transaction decremented product stock, and stock is part of the
+    // cached product payloads, so the product list is now stale.
+    await incrementCacheVersions(["product", "order"]);
+
     if (paymentData.paymentMethod === PaymentMethod.Khalti) {
       const data = {
         return_url: "http://localhost:5173/paymentCallback",
@@ -171,6 +176,9 @@ class OrderController {
           },
         },
       );
+
+      await incrementCacheVersions(["order"]);
+
       const paymentData = await Payment.findOne({
         where: {
           pidx: pidx,
@@ -324,6 +332,8 @@ class OrderController {
         },
       },
     );
+
+    await incrementCacheVersions(["order", "admin-stats"]);
 
     return res.status(200).json({
       message: "order successfully cancelled",
@@ -533,6 +543,8 @@ class OrderController {
       where: {id: orderId}
     })
 
+    await incrementCacheVersions(["order", "admin-stats"]);
+
     return res.status(200).json({
       message: "order status successfully updated"
     })
@@ -564,6 +576,9 @@ class OrderController {
     },{
       where: {id: paymentId}
     })
+
+    await incrementCacheVersions(["order", "admin-stats"]);
+
     return res.status(200).json({
       message: "payment status successfully updated"
     })
@@ -591,6 +606,8 @@ class OrderController {
     await Payment.destroy({
       where: {id: (order as any).paymentId}
     })
+
+    await incrementCacheVersions(["order", "admin-stats"]);
 
     return res.status(200).json({
       message: "order successfully deleted"

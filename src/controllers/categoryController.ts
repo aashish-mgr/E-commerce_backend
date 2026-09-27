@@ -1,6 +1,10 @@
 import Category from "../model/categoryModel";
 import { Request,Response } from "express";
-import { CACHE_TTL,generateCacheKey,getCacheVersion,incrementCacheVersion,setOrGetCache } from "../utils/redisHelper";
+import { CACHE_TTL,generateCacheKey,getCacheVersion,incrementCacheVersions,setOrGetCache } from "../utils/redisHelper";
+
+// Category rows are joined into the cached product listings, so any
+// category write has to invalidate both resources.
+const CATEGORY_WRITES = ["category", "product"];
 
 const defaultCategories = [
   {
@@ -39,6 +43,7 @@ class CategoryController {
 
   async seedCategory(_req: Request,res: Response) {
     await seedCategories();
+    await incrementCacheVersions(CATEGORY_WRITES);
     return res.status(200).json({
       message: "categories seeded successfully",
     });
@@ -54,7 +59,7 @@ class CategoryController {
 
       await Category.create({categoryName});
 
-      await incrementCacheVersion("category");
+      await incrementCacheVersions(CATEGORY_WRITES);
       res.status(200).json({
         message: "new category successfully created"
       })
@@ -94,7 +99,7 @@ class CategoryController {
        }
 
        await Category.destroy({where: {id: categoryId}});
-       await incrementCacheVersion("category")
+       await incrementCacheVersions(CATEGORY_WRITES)
        res.status(200).json({
         message: "Category successfully deleted"
        })
@@ -121,8 +126,8 @@ class CategoryController {
       });
 
       const updatedData = await Category.findOne({where: {id: categoryId}})
-      
-      await incrementCacheVersion("category")
+
+      await incrementCacheVersions(CATEGORY_WRITES)
       return res.status(200).json({
         message: "Category successfully updated",
         updatedData

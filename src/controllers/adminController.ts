@@ -9,9 +9,14 @@ import Cart from "../model/cartModel";
 import Order from "../model/orderModel";
 import OrderDetail from "../model/orderDetailModel";
 import Payment from "../model/paymentModel";
+import { incrementCacheVersions } from "../utils/redisHelper";
 
 const VALID_ROLES = ["admin", "vendor", "customer"];
 const LOW_STOCK_THRESHOLD = 5;
+
+// getStats aggregates every table, so any write that changes a count or a
+// rollup invalidates it alongside the resource it touched.
+const STATS = "admin-stats";
 
 const toSafeUser = (user: User) => ({
   id: user.id,
@@ -225,6 +230,8 @@ class AdminController {
 
     await target.update({ userRole });
 
+    await incrementCacheVersions(["user", STATS]);
+
     return res.status(200).json({
       message: "user role updated successfully",
       data: toSafeUser(target),
@@ -262,6 +269,8 @@ class AdminController {
           "Cannot delete this user because they have existing products or orders",
       });
     }
+
+    await incrementCacheVersions(["user", "product", STATS]);
 
     return res.status(200).json({
       message: "user deleted successfully",
@@ -341,6 +350,8 @@ class AdminController {
 
     await product.update({ stock: Math.max(0, Math.floor(Number(stock))) });
 
+    await incrementCacheVersions(["product", STATS]);
+
     return res.status(200).json({
       message: "product stock updated successfully",
       data: {
@@ -375,6 +386,8 @@ class AdminController {
         message: "Cannot delete this product because it has existing orders",
       });
     }
+
+    await incrementCacheVersions(["product", STATS]);
 
     return res.status(200).json({
       message: "product deleted successfully",
@@ -480,6 +493,8 @@ class AdminController {
 
     await order.update({ orderStatus });
 
+    await incrementCacheVersions(["order", STATS]);
+
     return res.status(200).json({
       message: "order status successfully updated",
     });
@@ -509,6 +524,8 @@ class AdminController {
       { where: { id: paymentId } },
     );
 
+    await incrementCacheVersions(["order", STATS]);
+
     return res.status(200).json({
       message: "payment status successfully updated",
     });
@@ -533,6 +550,8 @@ class AdminController {
     await Order.destroy({ where: { id: orderId } });
     await OrderDetail.destroy({ where: { orderId } });
     await Payment.destroy({ where: { id: (order as any).paymentId } });
+
+    await incrementCacheVersions(["order", STATS]);
 
     return res.status(200).json({
       message: "order successfully deleted",
@@ -559,6 +578,8 @@ class AdminController {
       });
     }
 
+    await incrementCacheVersions(["category", "product", STATS]);
+
     return res.status(200).json({
       message: "category successfully created",
       data: category,
@@ -583,6 +604,8 @@ class AdminController {
     }
 
     await category.update({ categoryName });
+
+    await incrementCacheVersions(["category", "product", STATS]);
 
     return res.status(200).json({
       message: "category successfully updated",
@@ -613,6 +636,8 @@ class AdminController {
         message: "Cannot delete this category because it has products",
       });
     }
+
+    await incrementCacheVersions(["category", "product", STATS]);
 
     return res.status(200).json({
       message: "category successfully deleted",
