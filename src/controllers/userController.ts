@@ -79,6 +79,13 @@ class AuthController {
       });
     }
 
+    if (!user.userPassword || user.provider === "google") {
+      return res.status(400).json({
+        message:
+          "Password login is not available for Google accounts. Please sign in with Google.",
+      });
+    }
+
     const isPasswordValid = bcrypt.compareSync(userPassword, user.userPassword);
     if (!isPasswordValid) {
       return res.status(400).json({
