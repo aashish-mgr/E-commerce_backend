@@ -14,10 +14,14 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { generalLimiter,authLimiter } from './middlewares/rateLimiter';
-import { connectRedis } from './config/redis';
+import { connectRedis, getRedisStatus } from './config/redis';
+import { envConfig } from './config/env';
+import { registerProcessErrorBoundary } from './config/processBoundary';
 
 
 dotenv.config();
+
+registerProcessErrorBoundary();
 
 const app = express();
 
@@ -47,6 +51,14 @@ app.use(
   },
   userRoute
 );
+// Unauthenticated and unthrottled, so a monitor can distinguish "process is up
+// but degraded" from "process is down".
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    cache: getRedisStatus(),
+  });
+});
 app.use('/product',generalLimiter,productRoute);
 app.use('/category',generalLimiter,categoryRoute);
 app.use('/cart',generalLimiter,cartRoute);
@@ -58,18 +70,35 @@ app.use(errorHandler);
 
 
 const startServer =async () => {
+  let cacheEnabled = false;
+
   try {
-    await connectRedis();
+    // Bounded by REDIS_CONNECT_TIMEOUT_MS and fail-open: this resolves false
+    // rather than hanging or throwing when Redis is down.
+    cacheEnabled = await connectRedis();
   } catch (error) {
-    // The cache helpers are fail-open, so the API still serves requests
-    // without Redis, just without caching.
-    console.error("Redis unavailable, continuing without cache:", error);
+    // Defence in depth. connectRedis is contractually fail-open, but a bug in
+    // it must not be able to stop the API from starting.
+    console.error("Redis setup failed, starting without cache:", error);
+  }
+
+  if (!cacheEnabled && envConfig.REDIS_REQUIRED) {
+    console.error("REDIS_REQUIRED is set but Redis is unavailable. Exiting.");
+    process.exit(1);
   }
 
   app.listen(3000,() => {
-    console.log("sever is listening on port 3000");
+    console.log(
+      `server is listening on port 3000 (cache: ${cacheEnabled ? "enabled" : "disabled"})`
+    );
   })
 }
 
-startServer();
+startServer(); 
+
+process.on("SIGINT", () => {
+  console.log("Shutting down...");
+  process.exit(0);
+});
+
 

@@ -18,6 +18,19 @@ const schema = z.object({
     ACCESS_TOKEN_EXPIRES_IN: z.string().optional(),
     REFRESH_TOKEN_EXPIRES_IN: z.string().optional(),
     REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
+    // Bounds how long startup waits on the cache. Without it the initial
+    // connect retries forever and the API never starts listening.
+    REDIS_CONNECT_TIMEOUT_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(3000),
+    // Redis is a cache, so it is optional by default. Set to "true" in
+    // deployments where serving stale-free data is not worth a degraded cache.
+    REDIS_REQUIRED: z
+        .string()
+        .optional()
+        .transform((value) => value === "true"),
 })
 
 const parsed = schema.safeParse(process.env);
@@ -42,4 +55,6 @@ export const envConfig = {
     ACCESS_TOKEN_EXPIRES_IN: parsed.data.ACCESS_TOKEN_EXPIRES_IN ?? '15m',
     REFRESH_TOKEN_EXPIRES_IN: parsed.data.REFRESH_TOKEN_EXPIRES_IN ?? '20d',
     REDIS_URL: parsed.data.REDIS_URL,
+    REDIS_CONNECT_TIMEOUT_MS: parsed.data.REDIS_CONNECT_TIMEOUT_MS,
+    REDIS_REQUIRED: parsed.data.REDIS_REQUIRED,
 }
