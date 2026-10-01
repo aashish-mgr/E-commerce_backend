@@ -6,13 +6,37 @@ import Product from "../model/productModel";
 import Category from "../model/categoryModel";
 
 class cartController {
+    // Guard against absurd line quantities. The cart holds what the customer
+    // intends to buy, so it should never be able to request more units than
+    // exist for sale.
+    static readonly MAX_CART_QUANTITY = 100;
+
     async addToCart (req:AuthRequest,res:Response) {
         const {quantity, productId} = req.body;
         const userId = req.user?.id;
 
-        if(!quantity || quantity < 1 || !productId) {
+        if(!productId) {
             return res.status(400).json({
                 message: "Please provide all the details"
+            })
+        }
+
+        // Number("abc") is NaN, and the old truthiness check let it through
+        // because "abc" is truthy and not < 1. NaN then reached the INTEGER
+        // column and postgres rejected the insert with a 500. Number.isInteger
+        // rejects NaN, Infinity and fractions in one test, and the value is
+        // parsed rather than trusted so nothing non-numeric gets that far.
+        const parsedQuantity = Number(quantity);
+
+        if(!Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
+            return res.status(400).json({
+                message: "Quantity must be a whole number of at least 1"
+            })
+        }
+
+        if(parsedQuantity > cartController.MAX_CART_QUANTITY) {
+            return res.status(400).json({
+                message: `Quantity cannot be more than ${cartController.MAX_CART_QUANTITY}`
             })
         }
 
@@ -23,14 +47,22 @@ class cartController {
             })
         }
 
-        const parsedQuantity = Math.floor(Number(quantity));
-
         const cartItem = await Cart.findOne({
             where: {userId,productId}
         })
 
+        // Adding to an existing line is additive, so the ceiling has to be
+        // checked against the resulting total rather than the incoming delta.
+        const resultingQuantity = (cartItem?.quantity ?? 0) + parsedQuantity;
+
+        if(resultingQuantity > product.stock) {
+            return res.status(400).json({
+                message: `Only ${product.stock} left in stock`
+            })
+        }
+
         if(cartItem) {
-            cartItem.quantity += parsedQuantity;
+            cartItem.quantity = resultingQuantity;
             await cartItem.save();
             return res.status(200).json({
                 message: "quantity added successfully"
@@ -41,7 +73,7 @@ class cartController {
             data: cart,
             message: "Added to cart successfully"
             })
-        
+
 
     }
 

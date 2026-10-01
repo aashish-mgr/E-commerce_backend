@@ -32,27 +32,58 @@ class TokenService {
       throw new ApiError("Refresh token is missing", 401);
     }
 
-    const record = await RefreshToken.findOne({
-      where: { tokenHash: hashToken(rawToken) },
-    });
+    const tokenHash = hashToken(rawToken);
+
+    // Claiming the rotation has to be a single conditional statement. A
+    // findOne followed by a separate update is a read-then-write race: two
+    // simultaneous requests holding the same cookie both read revoked = false
+    // and both proceed to mint a new pair, so a stolen token stays usable
+    // forever and the reuse detection never fires. Restricting the update to
+    // the row this token occupies means only the request that flips it wins.
+    const [claimed] = await RefreshToken.update(
+      { revoked: true },
+      {
+        where: {
+          tokenHash,
+          revoked: false,
+        },
+      },
+    );
+
+    // An affected count of 0 is ambiguous on its own: the token may not exist,
+      // may already be revoked, or may have expired. Reading it back
+      // distinguishes the cases so an expired token does not get reported as a
+      // reuse, which would wrongly kill the whole family.
+    const record = await RefreshToken.findOne({ where: { tokenHash } });
 
     if (!record) {
       throw new ApiError("Invalid refresh token", 401);
     }
 
-    if (record.revoked) {
-      await RefreshToken.update(
-        { revoked: true },
-        { where: { familyId: record.familyId } }
-      );
-      throw new ApiError("Refresh token has already been used", 401);
+    if (claimed !== 1) {
+      if (record.revoked) {
+        // Reuse of an already-rotated token: assume the token leaked and revoke
+        // the whole family, which is the entire point of tracking familyId.
+        await RefreshToken.update(
+          { revoked: true },
+          { where: { familyId: record.familyId } }
+        );
+        throw new ApiError("Refresh token has already been used", 401);
+      }
+
+      if (record.expiresAt.getTime() < Date.now()) {
+        throw new ApiError("Refresh token has expired", 401);
+      }
+
+      throw new ApiError("Invalid refresh token", 401);
     }
 
     if (record.expiresAt.getTime() < Date.now()) {
+      // We just claimed it but it expired between the update and this check.
+      // Revoking it is harmless.
+      await record.update({ revoked: true });
       throw new ApiError("Refresh token has expired", 401);
     }
-
-    await record.update({ revoked: true });
 
     const newRawToken = generateRefreshToken();
     await RefreshToken.create({
