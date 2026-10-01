@@ -100,10 +100,23 @@ class OrderController {
         const orderItems: { quantity: number; productId: string }[] = [];
         let totalAmount = 0;
 
-        for (const item of items) {
+        // Rows are locked in a stable productId order. Locking in request order
+        // lets two concurrent orders covering the same pair of products deadlock
+        // against each other, and a deterministic order gives them both the same
+        // first waiter.
+        const sortedItems = [...items].sort((a, b) =>
+          String(a.productId).localeCompare(String(b.productId)),
+        );
+
+        for (const item of sortedItems) {
           const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1));
           const product = await Product.findByPk(item.productId, {
             transaction,
+            // Serializes concurrent checkouts on this product. Without it the
+            // stock read below and the later decrement are two independent
+            // statements, so both transactions can observe the same pre-sale
+            // stock and both pass the check.
+            lock: transaction.LOCK.UPDATE,
           });
 
           if (!product) {
@@ -155,10 +168,36 @@ class OrderController {
             { ...item, orderId: createdOrder.id },
             { transaction },
           );
-          await Product.decrement(
-            "stock",
-            { by: item.quantity, where: { id: item.productId }, transaction },
-          );
+
+          // The conditional where is the real guard. The row lock above makes
+          // concurrent checkouts queue up, but the stock was already read and
+          // validated before the order row existed, so the decrement still has
+          // to re-assert the precondition in the same statement it updates. A
+          // decrement that matches no row is not an error, it just reports zero
+          // affected rows, which is what would let stock silently go negative.
+          //
+          // `returning: true` is required to get a count back: without it
+          // decrement resolves to a single-element array and the affected count
+          // at index 1 is undefined, so this guard would reject every order.
+          const affected = await Product.decrement("stock", {
+            by: item.quantity,
+            where: {
+              id: item.productId,
+              stock: { [Op.gte]: item.quantity },
+            },
+            transaction,
+          });
+
+          const affectedCount = Array.isArray(affected)
+            ? (affected[1] ?? affected[0]?.length ?? 0)
+            : 0;
+
+          if (affectedCount !== 1) {
+            throw new ApiError(
+              "Insufficient stock for one or more items. Please try again.",
+              409,
+            );
+          }
         }
 
         return { orderData: createdOrder, paymentData: createdPayment };
@@ -387,29 +426,76 @@ class OrderController {
       });
     }
 
-    const order = await Order.findOne({
-      where: {
-        userId,
-        id: orderId,
-      },
-    });
-
-    if (order?.orderStatus == OrderStatus.Shipped) {
-      return res.status(400).json({
-        message: "You cannot cancel the order. It is already shipped",
-      });
-    }
-    await Order.update(
-      { orderStatus: OrderStatus.Cancelled },
-      {
+    // Restocking and the status flip have to be atomic with each other, and the
+    // status change is also what makes the restock idempotent: it is claimed with
+    // a conditional update rather than a read-then-write, so two concurrent
+    // cancels of the same order cannot both see the old status and each add the
+    // quantities back.
+    await sequelize.transaction(async (transaction) => {
+      const order = await Order.findOne({
         where: {
           userId,
           id: orderId,
         },
-      },
-    );
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
 
-    await incrementCacheVersions(["order", "admin-stats"]);
+      if (!order) {
+        throw new ApiError("order not found", 404);
+      }
+
+      if (order.orderStatus === OrderStatus.Shipped) {
+        throw new ApiError(
+          "You cannot cancel the order. It is already shipped",
+          400,
+        );
+      }
+
+      if (order.orderStatus === OrderStatus.Cancelled) {
+        throw new ApiError("order is already cancelled", 400);
+      }
+
+      // Claim the cancellation first. If this update matches no row the order
+      // left a cancellable state underneath us and the restock must not run.
+      const [cancelled] = await Order.update(
+        { orderStatus: OrderStatus.Cancelled },
+        {
+          where: {
+            userId,
+            id: orderId,
+            orderStatus: { [Op.ne]: OrderStatus.Cancelled },
+          },
+          transaction,
+        },
+      );
+
+      if (cancelled !== 1) {
+        throw new ApiError("order is already cancelled", 400);
+      }
+
+      // createOrder decremented stock per line item, so cancelling gives exactly
+      // those quantities back. Without this the inventory drifts down by every
+      // cancelled order.
+      const orderDetails = await OrderDetail.findAll({
+        where: { orderId },
+        transaction,
+      });
+
+      for (const detail of orderDetails) {
+        // productId comes from the OrderDetail -> Order association rather than a
+        // declared column, so the model does not expose it on the instance type.
+        const productId = (detail as unknown as { productId: string }).productId;
+
+        await Product.increment("stock", {
+          by: detail.quantity,
+          where: { id: productId },
+          transaction,
+        });
+      }
+    });
+
+    await incrementCacheVersions(["order", "product", "admin-stats"]);
 
     return res.status(200).json({
       message: "order successfully cancelled",
