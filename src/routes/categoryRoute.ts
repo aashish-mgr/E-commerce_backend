@@ -2,6 +2,7 @@ import express from "express";
 import categoryController from "../controllers/categoryController";
 import AuthMiddleware from "../middlewares/authMiddleware";
 import { Role } from "../middlewares/authMiddleware";
+import validateUuidParam from "../middlewares/validateUuidParam";
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ router
   .delete(
     AuthMiddleware.isAuthenticated,
     AuthMiddleware.permittedTo(Role.Vendor),
+    validateUuidParam("categoryId"),
     categoryController.deleteCategory,
   );
 router
@@ -41,6 +43,7 @@ router
   .patch(
     AuthMiddleware.isAuthenticated,
     AuthMiddleware.permittedTo(Role.Vendor),
+    validateUuidParam("categoryId"),
     categoryController.updateCategory,
   );
 

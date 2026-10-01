@@ -5,6 +5,7 @@ import handleError from '../services/asyncError';
 import AuthMiddleware from '../middlewares/authMiddleware';
 import { Role } from '../middlewares/authMiddleware'; 
 import  upload  from '../middlewares/multerConfig';
+import validateUuidParam from '../middlewares/validateUuidParam';
 
 router.route('/create').post(
 	AuthMiddleware.isAuthenticated,
@@ -23,17 +24,20 @@ router.route('/getMyProducts').get(
 router.route('/getSingle/:id').get(
 	AuthMiddleware.isAuthenticated,
 	AuthMiddleware.permittedTo(Role.Vendor, Role.Customer),
+	validateUuidParam('id'),
 	handleError(productController.getSingleProduct)
 );
 router.route('/update/:id').patch(
 	AuthMiddleware.isAuthenticated,
 	AuthMiddleware.permittedTo(Role.Vendor),
 	upload.single('image'),
+	validateUuidParam('id'),
 	handleError(productController.updateProduct)
 );
 router.route('/delete/:id').delete(
 	AuthMiddleware.isAuthenticated,
 	AuthMiddleware.permittedTo(Role.Vendor),
+	validateUuidParam('id'),
 	handleError(productController.deleteProduct)
 );
 

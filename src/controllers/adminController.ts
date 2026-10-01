@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { Op } from "sequelize";
 import { AuthRequest } from "../middlewares/authMiddleware";
 import { getPaginationMeta, getPaginationParams } from "../utils/pagination";
+import { isUuid } from "../utils/isUuid";
 import User from "../model/userModel";
 import Product from "../model/productModel";
 import Category from "../model/categoryModel";
@@ -456,8 +457,12 @@ class AdminController {
       const conditions: Record<string, unknown>[] = [
         { phoneNumber: { [Op.iLike]: searchTerm } },
         { shippingAddress: { [Op.iLike]: searchTerm } },
-        { id: search },
       ];
+      // The search box accepts a plain order id, but only a well-formed uuid can
+      // be compared against the id column without postgres erroring out.
+      if (isUuid(search)) {
+        conditions.push({ id: search });
+      }
       if (productOrderIds.length > 0) {
         conditions.push({ id: { [Op.in]: productOrderIds } });
       }

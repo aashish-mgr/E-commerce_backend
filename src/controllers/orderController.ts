@@ -19,6 +19,7 @@ import { ApiError } from "../services/asyncError";
 import { sequelize } from "../config/dbConfig";
 import { getPaginationMeta, getPaginationParams } from "../utils/pagination";
 import { incrementCacheVersions } from "../utils/redisHelper";
+import { isUuid } from "../utils/isUuid";
 import { Op } from "sequelize";
 
 // Mirrors the enum on the Order and Payment models. Validating against these
@@ -289,12 +290,28 @@ class OrderController {
         ...new Set(productOrderRows.map((row) => (row as any).orderId)),
       ];
 
-      where[Op.or] = [
-        { id: search },
-        ...(productOrderIds.length > 0
-          ? [{ id: { [Op.in]: productOrderIds } }]
-          : []),
-      ];
+      // The search box accepts a plain order id, but only a well-formed uuid can
+      // be compared against the id column without postgres erroring out.
+      const conditions: Record<string, unknown>[] = [];
+      if (isUuid(search)) {
+        conditions.push({ id: search });
+      }
+      if (productOrderIds.length > 0) {
+        conditions.push({ id: { [Op.in]: productOrderIds } });
+      }
+
+      // Nothing matched and the term is not an id, so there is no condition to
+      // search on. An empty Op.or would compile to `OR ()`, which postgres
+      // rejects, so short-circuit to an empty page instead.
+      if (conditions.length === 0) {
+        return res.status(200).json({
+          message: "Orders fetched successfully",
+          data: [],
+          pagination: getPaginationMeta(page, limit, 0),
+        });
+      }
+
+      where[Op.or] = conditions;
     }
 
     const orders = await Order.findAll({
