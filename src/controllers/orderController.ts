@@ -20,7 +20,63 @@ import { sequelize } from "../config/dbConfig";
 import { getPaginationMeta, getPaginationParams } from "../utils/pagination";
 import { incrementCacheVersions } from "../utils/redisHelper";
 import { Op } from "sequelize";
+
+// Mirrors the enum on the Order and Payment models. Validating against these
+// turns a malformed value into a 400 instead of a database error.
+const VALID_ORDER_STATUSES = ["pending", "shipped", "delivered", "cancelled"];
+const VALID_PAYMENT_STATUSES = ["paid", "unpaid"];
+
 class OrderController {
+  /**
+   * An order carries no seller column - the seller is only implied by the
+   * products on its line items - so ownership has to be resolved through
+   * OrderDetail -> Product.userId, which is the same join the vendor read
+   * paths already use. That keeps a vendor's view of an order consistent
+   * across reads and writes.
+   *
+   * Returns the vendor's own line items, since an order may legitimately mix
+   * products from several vendors and callers need to know whether the vendor
+   * owns *all* of them or only some.
+   */
+  private async getVendorOwnedItems(
+    orderId: string,
+    vendorId: string,
+  ) {
+    return OrderDetail.findAll({
+      where: { orderId },
+      include: [
+        {
+          model: Product,
+          where: { userId: vendorId },
+          attributes: ["id"],
+        },
+      ],
+    });
+  }
+
+  /**
+   * Guards a vendor write against an order they have no part in. Kept separate
+   * from the item query so the 404-vs-403 decision lives in one place.
+   */
+  private async assertVendorOwnsOrder(
+    orderId: string,
+    vendorId: string,
+    res: Response,
+  ): Promise<boolean> {
+    const ownedItems = await this.getVendorOwnedItems(orderId, vendorId);
+
+    if (ownedItems.length === 0) {
+      // Deliberately the same message as "not found" so this endpoint cannot
+      // be used to probe whether an arbitrary order id exists.
+      res.status(404).json({
+        message: "order not found",
+      });
+      return false;
+    }
+
+    return true;
+  }
+
   //customer side
   async createOrder(req: AuthRequest, res: Response) {
     const { shippingAddress, phoneNumber, paymentDetails, items } =
@@ -274,6 +330,7 @@ class OrderController {
 
   async getOrderDetail(req: AuthRequest, res: Response) {
     const { orderId } = req.params;
+    const userId = req.user?.id;
     if (!orderId) {
       return res.status(400).json({
         message: "order id is required",
@@ -281,7 +338,9 @@ class OrderController {
     }
 
     const orderDetail = await Order.findAll({
-      where: {id: orderId },
+      where: {id: orderId ,
+        userId: userId
+      },
       include: [
         {
           model: OrderDetail,
@@ -443,10 +502,25 @@ class OrderController {
   }
 
   async getOrdersForProduct(req: AuthRequest, res: Response) {
+    const userId = req.user?.id;
     const { productId } = req.params;
     if (!productId) {
       return res.status(400).json({
         message: "product id is required",
+      });
+    }
+
+    // Ownership here is a property of the product, not the order: the product
+    // carries the vendor id directly, so a single scoped lookup both proves
+    // ownership and 404s for someone else's product.
+    const product = await Product.findOne({
+      where: { id: productId, userId },
+      attributes: ["id"],
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        message: "product not found",
       });
     }
 
@@ -518,7 +592,10 @@ class OrderController {
   }
 
   async updateOrderStatus(req: AuthRequest, res: Response) {
-    const {orderId} = req.params;
+    const userId = req.user?.id;
+    // Express 5 types a named param as string | string[]; a repeated or
+    // array-style param arrives as an array, so narrow rather than trust it.
+    const orderId = String(req.params.orderId);
     const {orderStatus} = req.body;
 
     if(!orderId || !orderStatus){
@@ -527,21 +604,34 @@ class OrderController {
       })
     }
 
-    const order = await Order.findOne({
-      where: {id: orderId}
-    })
-
-    if(!order) {
+    // The column is an enum, so an unrecognised value would otherwise surface
+    // as a database error rather than a client mistake.
+    if (!VALID_ORDER_STATUSES.includes(orderStatus)) {
       return res.status(400).json({
-        message: "order not found"
+        message: `order status must be one of: ${VALID_ORDER_STATUSES.join(", ")}`
       })
     }
 
-    await Order.update({
-      orderStatus
-    },{
-      where: {id: orderId}
-    })
+    if(!(await this.assertVendorOwnsOrder(orderId, userId as string, res))) {
+      return;
+    }
+
+    // Ownership was proven above; the update itself only needs the id because
+    // status is an order-level column with no per-vendor variant.
+    const [affected] = await Order.update(
+      { orderStatus },
+      {
+        where: {
+          id: orderId,
+        },
+      }
+    );
+
+    if (affected === 0) {
+      return res.status(404).json({
+        message: "order not found"
+      })
+    }
 
     await incrementCacheVersions(["order", "admin-stats"]);
 
@@ -550,7 +640,8 @@ class OrderController {
     })
   }
   async updatePaymentStatus(req: AuthRequest,res: Response) {
-    const {orderId} = req.params;
+    const userId = req.user?.id;
+    const orderId = String(req.params.orderId);
     const {paymentStatus} = req.body;
 
     if(!orderId || !paymentStatus){
@@ -559,23 +650,34 @@ class OrderController {
       })
     }
 
-    const order = await Order.findOne({
-      where: {id: orderId}
-    })
-
-    if(!order) {
+    if (!VALID_PAYMENT_STATUSES.includes(paymentStatus)) {
       return res.status(400).json({
+        message: `payment status must be one of: ${VALID_PAYMENT_STATUSES.join(", ")}`
+      })
+    }
+
+    if(!(await this.assertVendorOwnsOrder(orderId, userId as string, res))) {
+      return;
+    }
+
+    const order = await Order.findByPk(orderId, {
+      attributes: ["id", "paymentId"],
+    });
+
+    if(!order?.paymentId) {
+      return res.status(404).json({
         message: "order not found"
       })
     }
 
-    const paymentId = (order as any).paymentId;
-
-    await Payment.update({
-      paymentStatus
-    },{
-      where: {id: paymentId}
-    })
+    await Payment.update(
+      { paymentStatus },
+      {
+        where: {
+          id: order.paymentId,
+        }
+      }
+    )
 
     await incrementCacheVersions(["order", "admin-stats"]);
 
@@ -585,27 +687,54 @@ class OrderController {
   }
 
   async deleteOrder(req: AuthRequest,res: Response) {
-    const {orderId} = req.params;
-    const order = await Order.findOne({
-      where: {id: orderId}
-    })
+    const userId = req.user?.id;
+    const orderId = String(req.params.orderId);
+
     if(!orderId){
       return res.status(400).json({
         message: "order id is required"
       })
     }
-    if(order) {
-    await Order.destroy({
-      where: {id: orderId}
-    })
 
-    await OrderDetail.destroy({
-      where: {orderId}
-    })
+    // A delete is destructive to every line item on the order, including other
+    // vendors' items, so a vendor is only allowed to delete an order they own
+    // outright. Deleting one they merely appear on would silently destroy
+    // another vendor's sale.
+    const ownedItems = await this.getVendorOwnedItems(orderId, userId as string);
 
-    await Payment.destroy({
-      where: {id: (order as any).paymentId}
-    })
+    if (ownedItems.length === 0) {
+      return res.status(404).json({
+        message: "order not found"
+      })
+    }
+
+    const totalItems = await OrderDetail.count({ where: { orderId } });
+
+    if (ownedItems.length !== totalItems) {
+      return res.status(403).json({
+        message: "This order contains products from other vendors and cannot be deleted"
+      })
+    }
+
+    const order = await Order.findByPk(orderId, {
+      attributes: ["id", "paymentId"],
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        message: "order not found"
+      })
+    }
+
+    // Deleting the order before its children violates the orderdetails ->
+    // orders foreign key and aborts the whole operation, so children go first.
+    // Wrapped in a transaction so a failure part-way cannot leave a payment
+    // row orphaned against a missing order.
+    await sequelize.transaction(async (transaction) => {
+      await OrderDetail.destroy({ where: { orderId }, transaction });
+      await Payment.destroy({ where: { id: order.paymentId }, transaction });
+      await Order.destroy({ where: { id: orderId }, transaction });
+    });
 
     await incrementCacheVersions(["order", "admin-stats"]);
 
@@ -613,12 +742,6 @@ class OrderController {
       message: "order successfully deleted"
     })
   }
-  else {
-    return res.status(400).json({
-      message: "order not found"
-    })
-  }
-}
 }
 
 export default new OrderController();

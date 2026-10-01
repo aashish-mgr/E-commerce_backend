@@ -1,5 +1,6 @@
 
-import { Table, Column, Model,DataType } from "sequelize-typescript";
+import { Table, Column, Model,DataType, ForeignKey } from "sequelize-typescript";
+import Payment from "./paymentModel";
 
 @Table({
     tableName: "orders",
@@ -42,12 +43,24 @@ class Order extends Model {
     })
     declare totalAmount: number
 
-    @Column({
+@Column({
         type: DataType.ENUM("pending","shipped","delivered","cancelled"),
         allowNull: false,
         defaultValue: "pending"
     })
+
     declare orderStatus: string
+
+    // Declared explicitly rather than left implicit. The Payment association
+    // below supplies this foreign key at runtime, but without the declaration
+    // TypeScript rejects `order.paymentId` and callers are pushed toward
+    // `as any`, which is what hid it before.
+    @ForeignKey(() => Payment)
+    @Column({
+        type: DataType.UUID
+    })
+
+    declare paymentId: string
 }
 
 export default Order;
