@@ -27,6 +27,17 @@ import { Op } from "sequelize";
 const VALID_ORDER_STATUSES = ["pending", "shipped", "delivered", "cancelled"];
 const VALID_PAYMENT_STATUSES = ["paid", "unpaid"];
 
+/**
+ * Money is accumulated as integer minor units (paisa) and only formatted at the
+ * edges. Summing productPrice as a JS float drifts - 0.1 + 0.2 !== 0.3 - and the
+ * drift is then multiplied by 100 when the amount is sent to Khalti, which
+ * rejects a total that is off by a paisa. Keeping the running total an integer
+ * makes the sum exact and the Khalti conversion a plain division.
+ */
+const toMinorUnits = (amount: number): number => Math.round(amount * 100);
+
+const fromMinorUnits = (minor: number): string => (minor / 100).toFixed(2);
+
 class OrderController {
   /**
    * An order carries no seller column - the seller is only implied by the
@@ -95,10 +106,10 @@ class OrderController {
       });
     }
 
-    const { orderData, paymentData } = await sequelize.transaction(
-      async (transaction) => {
+    const { orderData, paymentData, totalMinorUnits, orderItems } =
+      await sequelize.transaction(async (transaction) => {
         const orderItems: { quantity: number; productId: string }[] = [];
-        let totalAmount = 0;
+        let totalMinorUnits = 0;
 
         // Rows are locked in a stable productId order. Locking in request order
         // lets two concurrent orders covering the same pair of products deadlock
@@ -141,7 +152,11 @@ class OrderController {
             );
           }
 
-          totalAmount += price * quantity;
+          // productPrice is a DECIMAL column, so it arrives as a string and
+          // Number() on it is already an approximation. Rounding to whole
+          // paisa immediately bounds that error to half a paisa per line rather
+          // than letting it accumulate across the running total.
+          totalMinorUnits += toMinorUnits(price) * quantity;
           orderItems.push({ productId: product.id, quantity });
         }
 
@@ -156,7 +171,7 @@ class OrderController {
           {
             shippingAddress,
             phoneNumber,
-            totalAmount,
+            totalAmount: fromMinorUnits(totalMinorUnits),
             userId,
             paymentId: createdPayment.id,
           },
@@ -200,25 +215,46 @@ class OrderController {
           }
         }
 
-        return { orderData: createdOrder, paymentData: createdPayment };
+        return {
+          orderData: createdOrder,
+          paymentData: createdPayment,
+          totalMinorUnits,
+          orderItems,
+        };
       },
     );
 
-    // The transaction decremented product stock, and stock is part of the
-    // cached product payloads, so the product list is now stale.
-    await incrementCacheVersions(["product", "order"]);
+    if (paymentData.paymentMethod !== PaymentMethod.Khalti) {
+      // The transaction decremented product stock, and stock is part of the
+      // cached product payloads, so the product list is now stale.
+      await incrementCacheVersions(["product", "order"]);
 
-    if (paymentData.paymentMethod === PaymentMethod.Khalti) {
-      const data = {
-        return_url: "http://localhost:5173/paymentCallback",
-        amount: orderData.totalAmount * 100,
-        purchase_order_id: orderData.id,
-        purchase_order_name: "order_" + orderData.id,
-        website_url: "http://localhost:5173/",
-      };
+      return res.status(200).json({
+        message: "Order successfully created",
+        orderId: orderData.id,
+      });
+    }
+
+    // Khalti is an external call made after the transaction has already
+    // committed, so it cannot participate in it. If it fails the order is
+    // committed with stock already decremented and no payment URL, which
+    // strands the inventory. Compensating here rather than hoping the caller
+    // retries: the order never became payable, so the only correct end state is
+    // for it not to exist.
+    let khaltiReturnData: khaltiResponse;
+    try {
       const response = await axios.post(
         "https://dev.khalti.com/api/v2/epayment/initiate/",
-        data,
+        {
+          return_url: "http://localhost:5173/paymentCallback",
+          // Khalti expects the amount in paisa as a whole number. Multiplying
+          // the stored total by 100 would reintroduce the float drift the minor
+          // unit accounting exists to avoid.
+          amount: totalMinorUnits,
+          purchase_order_id: orderData.id,
+          purchase_order_name: "order_" + orderData.id,
+          website_url: "http://localhost:5173/",
+        },
         {
           headers: {
             Authorization: `key ${envConfig.KHALTI_SECRET_KEY}`,
@@ -226,20 +262,64 @@ class OrderController {
         },
       );
 
-      const khaltiReturnData: khaltiResponse = response.data;
-      paymentData.pidx = khaltiReturnData.pidx;
-      await paymentData.save();
-      res.status(200).json({
-        message: "Order successfully created",
-        response: khaltiReturnData.payment_url,
-        orderId: orderData.id,
-      });
-    } else {
-      return res.status(200).json({
-        message: "Order successfully created",
-        orderId: orderData.id,
-      });
+      khaltiReturnData = response.data;
+    } catch (err) {
+      console.error("Khalti initiate failed, compensating order", err);
+      await this.compensateFailedOrder(orderData.id, orderItems);
+
+      throw new ApiError(
+        "Could not reach the payment provider. Your order was not placed and no stock was reserved.",
+        502,
+      );
     }
+
+    paymentData.pidx = khaltiReturnData.pidx;
+    await paymentData.save();
+
+    await incrementCacheVersions(["product", "order"]);
+
+    return res.status(200).json({
+      message: "Order successfully created",
+      response: khaltiReturnData.payment_url,
+      orderId: orderData.id,
+    });
+  }
+
+  /**
+   * Undoes a committed order whose payment could not be initiated: puts the
+   * reserved stock back, then removes the order and its payment row. Deleting
+   * children before the order row is required by the orderdetails -> orders
+   * foreign key, and the whole thing runs in one transaction so a failure part
+   * way cannot leave the order deleted with the stock still held.
+   */
+  private async compensateFailedOrder(
+    orderId: string,
+    orderItems: { productId: string; quantity: number }[],
+  ) {
+    await sequelize.transaction(async (transaction) => {
+      for (const item of orderItems) {
+        await Product.increment("stock", {
+          by: item.quantity,
+          where: { id: item.productId },
+          transaction,
+        });
+      }
+
+      const order = await Order.findByPk(orderId, {
+        attributes: ["id", "paymentId"],
+        transaction,
+      });
+
+      await OrderDetail.destroy({ where: { orderId }, transaction });
+
+      if (order?.paymentId) {
+        await Payment.destroy({ where: { id: order.paymentId }, transaction });
+      }
+
+      await Order.destroy({ where: { id: orderId }, transaction });
+    });
+
+    await incrementCacheVersions(["product", "order", "admin-stats"]);
   }
 
   async verifyPayment(req: AuthRequest, res: Response) {

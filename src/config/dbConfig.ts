@@ -43,6 +43,14 @@ const connectDb = async () => {
       EXCEPTION
         WHEN duplicate_object THEN NULL;
       END $$;`);
+    // totalAmount was FLOAT (a double) and is now DECIMAL(12,2). sequelize.sync
+    // runs with alter: false, so it will not migrate the existing column and any
+    // value already stored would stay a float and keep drifting on read. Rounding
+    // through numeric clamps whatever is already there to the two decimal places
+    // the column now declares.
+    await sequelize.query(
+      'ALTER TABLE "orders" ALTER COLUMN "totalAmount" TYPE DECIMAL(12,2) USING "totalAmount"::numeric(12,2)',
+    );
     console.log("sequelize sync completed")
     User;
     }

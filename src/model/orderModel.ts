@@ -37,9 +37,21 @@ class Order extends Model {
     declare phoneNumber: string
 
 
+    // DECIMAL rather than FLOAT. Postgres FLOAT is a double, so a stored total
+    // can come back as 23.449999999999993 and re-serialising it sends a wrong
+    // amount to the payment provider. sequelize-typescript hands DECIMAL back as
+    // a string, so this is declared as one and formatted where it is displayed.
     @Column({
-        type: DataType.FLOAT,
-        allowNull: false
+        type: DataType.DECIMAL(12, 2),
+        allowNull: false,
+        get() {
+            // DECIMAL comes back from postgres as a string. Coercing it to a
+            // number here keeps every read site (json responses, admin revenue
+            // sums, order listings) working against the same type it had when
+            // this column was FLOAT.
+            const value = this.getDataValue("totalAmount") as unknown;
+            return value === null || value === undefined ? value : Number(value);
+        },
     })
     declare totalAmount: number
 

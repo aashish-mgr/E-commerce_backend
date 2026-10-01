@@ -63,10 +63,14 @@ class AdminController {
         Product.count({ where: { stock: { [Op.lte]: LOW_STOCK_THRESHOLD } } }),
       ]);
 
+      // SUM over a DECIMAL column comes back from postgres as a string, so it is
+      // coerced here rather than leaking `"1234.56"` into the stats payload.
       const totalRevenue =
-        (await Order.sum("totalAmount", {
-          where: { orderStatus: { [Op.ne]: "cancelled" } },
-        })) ?? 0;
+        Number(
+          await Order.sum("totalAmount", {
+            where: { orderStatus: { [Op.ne]: "cancelled" } },
+          }),
+        ) || 0;
 
       const days = 7;
       const periodStart = new Date();
