@@ -11,6 +11,7 @@ import Order from "../model/orderModel";
 import OrderDetail from "../model/orderDetailModel";
 import Payment from "../model/paymentModel";
 import { incrementCacheVersions, CACHE_TTL, generateCacheKey, getCacheVersion, setOrGetCache } from "../utils/redisHelper";
+import { sequelize } from "../config/dbConfig";
 
 const VALID_ROLES = ["admin", "vendor", "customer"];
 const LOW_STOCK_THRESHOLD = 5;
@@ -575,9 +576,18 @@ class AdminController {
       });
     }
 
-    await Order.destroy({ where: { id: orderId } });
-    await OrderDetail.destroy({ where: { orderId } });
-    await Payment.destroy({ where: { id: (order as any).paymentId } });
+    // Deleting the order before its children violates the orderdetails ->
+    // orders foreign key and aborts the whole operation, so children go first.
+    // Wrapped in a transaction so a failure part-way cannot leave a payment row
+    // orphaned against a missing order.
+    await sequelize.transaction(async (transaction) => {
+      await OrderDetail.destroy({ where: { orderId }, transaction });
+      await Payment.destroy({
+        where: { id: (order as any).paymentId },
+        transaction,
+      });
+      await Order.destroy({ where: { id: orderId }, transaction });
+    });
 
     await incrementCacheVersions(["order", STATS]);
 
