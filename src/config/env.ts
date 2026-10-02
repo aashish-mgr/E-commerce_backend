@@ -4,6 +4,9 @@ import {z} from 'zod'
 dotenv.config();
 
 const schema = z.object({
+    NODE_ENV: z
+        .enum(["development", "test", "production"])
+        .default("development"),
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
     JWT_SECRET_KEY: z.string().min(1, "JWT_SECRET_KEY is required"),
     CLOUDINARY_CLOUD_NAME: z.string().min(1, "CLOUDINARY_CLOUD_NAME is required"),
@@ -14,6 +17,18 @@ const schema = z.object({
     GOOGLE_CLIENT_ID: z.string().min(1,"GOOGLE_CLIENT_ID is required"),
     GOOGLE_CLIENT_SECRET: z.string().min(1,"GOOGLE_CLIENT_SECRET is required"),
     GOOGLE_REDIRECT_URL: z.string().url("GOOGLE_REDIRECT_URL must be a valid URL"),
+    // Auth cookies carry session credentials, so the Secure flag is not
+    // optional in production. Leaving this unset follows NODE_ENV, which is
+    // the safe default and needs no extra configuration. Set it explicitly
+    // only when the transport disagrees with NODE_ENV, e.g. an HTTPS staging
+    // host still running NODE_ENV=development.
+    COOKIE_SECURE: z.enum(["true", "false"]).optional(),
+    // Where the browser is sent once a sign-in finishes. Absolute by
+    // construction: a relative value would strand the user on the API origin.
+    CLIENT_URL: z
+        .string()
+        .url("CLIENT_URL must be a valid URL")
+        .default("http://localhost:5173"),
     KHALTI_SECRET_KEY: z.string().min(1, "KHALTI_SECRET_KEY is required"),
     ACCESS_TOKEN_EXPIRES_IN: z.string().optional(),
     REFRESH_TOKEN_EXPIRES_IN: z.string().optional(),
@@ -40,7 +55,17 @@ if (!parsed.success) {
     throw new Error("Invalid environment variables");
 }
 
+// Fail closed: an unset COOKIE_SECURE must never silently mean "no Secure
+// flag" in production, where a cookie set over plaintext HTTP is exposed to
+// anyone on the path. NODE_ENV is the proxy for the deployment's transport
+// because req.secure cannot tell the truth behind a TLS-terminating proxy.
+const cookieSecure =
+    parsed.data.COOKIE_SECURE === undefined
+        ? parsed.data.NODE_ENV === "production"
+        : parsed.data.COOKIE_SECURE === "true";
+
 export const envConfig = {
+    NODE_ENV: parsed.data.NODE_ENV,
     DATABASE_URL: parsed.data.DATABASE_URL,
     JWT_SECRET_KEY: parsed.data.JWT_SECRET_KEY,
     CLOUDINARY_CLOUD_NAME: parsed.data.CLOUDINARY_CLOUD_NAME,
@@ -51,6 +76,8 @@ export const envConfig = {
     GOOGLE_CLIENT_ID: parsed.data.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: parsed.data.GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URL: parsed.data.GOOGLE_REDIRECT_URL,
+    COOKIE_SECURE: cookieSecure,
+    CLIENT_URL: parsed.data.CLIENT_URL,
     KHALTI_SECRET_KEY: parsed.data.KHALTI_SECRET_KEY,
     ACCESS_TOKEN_EXPIRES_IN: parsed.data.ACCESS_TOKEN_EXPIRES_IN ?? '15m',
     REFRESH_TOKEN_EXPIRES_IN: parsed.data.REFRESH_TOKEN_EXPIRES_IN ?? '20d',

@@ -1,5 +1,4 @@
 import { randomUUID } from "crypto";
-import type { Response } from "express";
 import RefreshToken from "../model/refreshTokenModel";
 import { envConfig } from "../config/env";
 import { ApiError } from "./asyncError";
@@ -110,34 +109,13 @@ class TokenService {
   }
 }
 
-const cookieOptions = (maxAge: number) => ({
-  httpOnly: true,
-  secure: false,
-  sameSite: "lax" as const,
-  maxAge,
-});
-
-export const setAuthCookies = (
-  res: Response,
-  { accessToken, refreshToken }: { accessToken: string; refreshToken: string }
-) => {
-  res.cookie(
-    "accessToken",
-    accessToken,
-    cookieOptions(expiryToMs(envConfig.ACCESS_TOKEN_EXPIRES_IN))
-  );
-  res.cookie(
-    "refreshToken",
-    refreshToken,
-    cookieOptions(expiryToMs(envConfig.REFRESH_TOKEN_EXPIRES_IN))
-  );
-};
-
-export const clearAuthCookies = (res: Response) => {
-  res.clearCookie("accessToken");
-  res.clearCookie("refreshToken");
-};
-
-export { generateAccessToken };
+// Cookie flags are defined once, in tokenUtils. A second copy here previously
+// carried its own hardcoded `secure: false`, which meant fixing one copy could
+// silently leave the other shipping cookies over plaintext.
+export {
+  generateAccessToken,
+  setAuthCookies,
+  clearAuthCookies,
+} from "../utils/tokenUtils";
 
 export default TokenService;

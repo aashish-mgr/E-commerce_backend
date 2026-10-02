@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import type { Response } from "express";
+import type { CookieOptions, Response } from "express";
 import jwt from "jsonwebtoken";
 import { envConfig } from "../config/env";
 
@@ -28,30 +28,47 @@ export const expiryToMs = (expiry: string): number => {
   return value * (multipliers[unit] ?? 60 * 1000);
 };
 
-const cookieOptions = (maxAge: number) => ({
+/**
+ * Flags shared by every cookie this app sets.
+ *
+ * `secure` follows the environment rather than being hardcoded, because a
+ * session cookie without it is transmitted in cleartext to any plaintext hop.
+ * It stays off outside production only so local development over http://
+ * works, where the browser would silently drop a Secure cookie and every
+ * login would fail.
+ *
+ * `sameSite: "lax"` is deliberate rather than "strict": the OAuth callback is
+ * a top-level cross-site GET navigation back from Google, and a Strict cookie
+ * would not be sent there, breaking sign-in. Lax still blocks the CSRF that
+ * matters here (cross-site POSTs and subresource requests).
+ */
+export const baseCookieOptions = (): Pick<
+  CookieOptions,
+  "httpOnly" | "secure" | "sameSite"
+> => ({
   httpOnly: true,
-  secure: false,
-  sameSite: "lax" as const,
-  maxAge,
+  secure: envConfig.COOKIE_SECURE,
+  sameSite: "lax",
 });
 
 export const setAuthCookies = (
   res: Response,
   { accessToken, refreshToken }: { accessToken: string; refreshToken: string }
 ) => {
-  res.cookie(
-    "accessToken",
-    accessToken,
-    cookieOptions(expiryToMs(envConfig.ACCESS_TOKEN_EXPIRES_IN))
-  );
-  res.cookie(
-    "refreshToken",
-    refreshToken,
-    cookieOptions(expiryToMs(envConfig.REFRESH_TOKEN_EXPIRES_IN))
-  );
+  res.cookie("accessToken", accessToken, {
+    ...baseCookieOptions(),
+    maxAge: expiryToMs(envConfig.ACCESS_TOKEN_EXPIRES_IN),
+  });
+  res.cookie("refreshToken", refreshToken, {
+    ...baseCookieOptions(),
+    maxAge: expiryToMs(envConfig.REFRESH_TOKEN_EXPIRES_IN),
+  });
 };
 
 export const clearAuthCookies = (res: Response) => {
-  res.clearCookie("accessToken");
-  res.clearCookie("refreshToken");
+  // The same flags are passed so the clearing Set-Cookie describes the same
+  // cookie the response previously set; a mismatched Path or Domain produces
+  // a second, live cookie that outlives the logout.
+  res.clearCookie("accessToken", baseCookieOptions());
+  res.clearCookie("refreshToken", baseCookieOptions());
 };
