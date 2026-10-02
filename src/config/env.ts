@@ -29,6 +29,22 @@ const schema = z.object({
         .string()
         .url("CLIENT_URL must be a valid URL")
         .default("http://localhost:5173"),
+    // How the Postgres connection is secured. Named after libpq's sslmode so it
+    // reads the same as the connection string it overrides:
+    //   disable     - no TLS. Local development against a local socket.
+    //   require     - TLS negotiated, but the server certificate is not
+    //                 verified. This defeats passive eavesdropping and nothing
+    //                 else: an active attacker still terminates the connection
+    //                 and reads or rewrites every row, password hashes and
+    //                 refresh tokens included. Only for a server whose
+    //                 certificate cannot be validated.
+    //   verify-full - TLS with full certificate and hostname validation. The
+    //                 only setting that is safe in production.
+    // Unset follows NODE_ENV: verify-full in production, disable elsewhere.
+    DB_SSL_MODE: z.enum(["disable", "require", "verify-full"]).optional(),
+    // PEM bundle for a private CA, for when the server presents a certificate
+    // the system trust store does not already contain.
+    DB_SSL_CA: z.string().min(1).optional(),
     KHALTI_SECRET_KEY: z.string().min(1, "KHALTI_SECRET_KEY is required"),
     ACCESS_TOKEN_EXPIRES_IN: z.string().optional(),
     REFRESH_TOKEN_EXPIRES_IN: z.string().optional(),
@@ -64,6 +80,13 @@ const cookieSecure =
         ? parsed.data.NODE_ENV === "production"
         : parsed.data.COOKIE_SECURE === "true";
 
+// Same fail-closed reasoning as the cookie flag: a production database reached
+// over the network must not fall back to an unverified or plaintext link
+// because nobody set a variable.
+const dbSslMode =
+    parsed.data.DB_SSL_MODE ??
+    (parsed.data.NODE_ENV === "production" ? "verify-full" : "disable");
+
 export const envConfig = {
     NODE_ENV: parsed.data.NODE_ENV,
     DATABASE_URL: parsed.data.DATABASE_URL,
@@ -78,6 +101,8 @@ export const envConfig = {
     GOOGLE_REDIRECT_URL: parsed.data.GOOGLE_REDIRECT_URL,
     COOKIE_SECURE: cookieSecure,
     CLIENT_URL: parsed.data.CLIENT_URL,
+    DB_SSL_MODE: dbSslMode,
+    DB_SSL_CA: parsed.data.DB_SSL_CA,
     KHALTI_SECRET_KEY: parsed.data.KHALTI_SECRET_KEY,
     ACCESS_TOKEN_EXPIRES_IN: parsed.data.ACCESS_TOKEN_EXPIRES_IN ?? '15m',
     REFRESH_TOKEN_EXPIRES_IN: parsed.data.REFRESH_TOKEN_EXPIRES_IN ?? '20d',

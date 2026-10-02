@@ -1,4 +1,6 @@
 
+import fs from 'fs';
+import type { ConnectionOptions } from 'tls';
 import { Sequelize } from 'sequelize-typescript';
 import User from '../model/userModel'
 import Product from '../model/productModel';
@@ -16,17 +18,61 @@ if (!DATABASE_URL) {
     throw new Error('DATABASE_URL is not set in environment variables');
 }
 
+/**
+ * TLS settings for the database connection.
+ *
+ * This used to be hardcoded to `{require: true, rejectUnauthorized: false}`,
+ * which is the worst of both options: it forces TLS onto a local server that
+ * does not offer it, and then disables certificate verification on the remote
+ * ones that do. With verification off, any host on the path can answer the
+ * handshake with a certificate it made up, and then read or rewrite every row.
+ * That includes the users table and the refresh_tokens table, so a MITM on the
+ * database connection is equivalent to full account takeover.
+ *
+ * Verification is on by default in production, and pg sends the connect host as
+ * TLS servername (see pg/lib/connection.js), so verify-full validates the
+ * hostname too rather than just the signature chain.
+ */
+const buildSslOptions = (): (ConnectionOptions & { require: boolean }) | undefined => {
+    if (envConfig.DB_SSL_MODE === 'disable') {
+        return undefined;
+    }
+
+    const ssl: ConnectionOptions & { require: boolean } = {
+        // node-postgres's switch for "negotiate TLS and fail if the server
+        // refuses". It says nothing about whether the certificate is genuine.
+        require: true,
+        // Only the explicitly opted-in require mode skips validation.
+        rejectUnauthorized: envConfig.DB_SSL_MODE === 'verify-full',
+    };
+
+    if (envConfig.DB_SSL_CA) {
+        ssl.ca = fs.readFileSync(envConfig.DB_SSL_CA, 'utf8');
+    }
+
+    return ssl;
+};
+
+const sslOptions = buildSslOptions();
+
+// Reaching for require mode in production is a choice with a real cost, so it
+// is reported at startup rather than left to be discovered during an incident.
+if (envConfig.NODE_ENV === 'production' && sslOptions?.rejectUnauthorized === false) {
+    console.warn(
+        'DB_SSL_MODE=require in production: the database certificate is not verified. ' +
+        'A man-in-the-middle can read and modify every row, including password hashes ' +
+        'and refresh tokens. Use verify-full, and set DB_SSL_CA if the server uses a private CA.'
+    );
+}
+
 const sequelize = new Sequelize(DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres',
     models: [User, Product,Category,Cart,Order,OrderDetail,Payment,RefreshToken],
     logging: console.log,
-    dialectOptions: {
-        ssl: {
-            require: true,
-            rejectUnauthorized: false
-        }
-    }
+    // Omitted entirely in disable mode rather than passed as undefined, so no
+    // TLS option reaches pg that could contradict the configured mode.
+    ...(sslOptions ? { dialectOptions: { ssl: sslOptions } } : {}),
 });
 
 const connectDb = async () => {
@@ -56,7 +102,26 @@ const connectDb = async () => {
     }
     catch(err){
         console.error("Database connection or sync error: ",err);
-       
+
+        // A rejected certificate is a configuration problem, not a transient
+        // one, and the OpenSSL text on its own does not say which knob to turn.
+        // The API keeps serving after this, so the hint is the only thing that
+        // stands between an operator and a deploy that looks healthy while
+        // every query fails.
+        if (
+            envConfig.DB_SSL_MODE !== 'disable' &&
+            /certificate|self[- ]signed|unable to verify/i.test(
+                err instanceof Error ? err.message : String(err)
+            )
+        ) {
+            console.error(
+                `Database TLS verification failed with DB_SSL_MODE=${envConfig.DB_SSL_MODE}. ` +
+                'Supabase\' pooled connections (port 6543) are signed by a private CA that is in ' +
+                'no public trust store, so verify-full needs that root: download it from the project\'s ' +
+                'database settings and point DB_SSL_CA at the file. DB_SSL_MODE=require will connect, ' +
+                'but it does not verify who is on the other end of the connection.'
+            );
+        }
     }
 }
 

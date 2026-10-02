@@ -205,6 +205,17 @@ class AuthController {
 
     await incrementCacheVersion(USER_CACHE_RESOURCE);
 
+    // A password change is how a user says "assume this credential leaked". Every
+    // refresh token issued against the old password stays renewable for up to
+    // REFRESH_TOKEN_EXPIRES_IN otherwise, so a stolen session outlives the change
+    // and can mint fresh access tokens indefinitely. Revoke all of them, then hand
+    // the device that made the change a new pair so the legitimate user is not
+    // logged out of the browser they are sitting at.
+    await TokenService.revokeAllRefreshTokens(user.id);
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = await TokenService.issueRefreshToken(user.id);
+    setAuthCookies(res, { accessToken, refreshToken });
+
     return res.status(200).json({
       message: "password changed successfully",
     });

@@ -107,6 +107,22 @@ class TokenService {
       { where: { tokenHash: hashToken(rawToken) } }
     );
   }
+
+  /**
+   * Revokes every refresh token a user holds, across all families.
+   *
+   * Revoking per family would leave sessions minted on the user's other devices
+   * alive, which is the opposite of what a password change is meant to achieve:
+   * once the credential is suspect, sessions established with it must all stop
+   * being renewable. Narrowing to revoked = false also leaves already-revoked
+   * rows untouched, so the affected count reflects real transitions.
+   */
+  static async revokeAllRefreshTokens(userId: string): Promise<void> {
+    await RefreshToken.update(
+      { revoked: true },
+      { where: { userId, revoked: false } }
+    );
+  }
 }
 
 // Cookie flags are defined once, in tokenUtils. A second copy here previously
