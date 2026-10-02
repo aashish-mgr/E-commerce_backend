@@ -62,6 +62,20 @@ const schema = z.object({
         .string()
         .optional()
         .transform((value) => value === "true"),
+    // Sequelize interpolates bound values into the statement it logs, so a query
+    // log is a record of every password hash, email and token that passed
+    // through. Off by default rather than on outside production, because the
+    // sensitive thing here is the values and not the deployment.
+    DB_LOG_QUERIES: z
+        .string()
+        .optional()
+        .transform((value) => value === "true"),
+    // A slow query is worth reporting on its own even when full logging is off.
+    DB_SLOW_QUERY_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(500),
 })
 
 const parsed = schema.safeParse(process.env);
@@ -109,4 +123,6 @@ export const envConfig = {
     REDIS_URL: parsed.data.REDIS_URL,
     REDIS_CONNECT_TIMEOUT_MS: parsed.data.REDIS_CONNECT_TIMEOUT_MS,
     REDIS_REQUIRED: parsed.data.REDIS_REQUIRED,
+    DB_LOG_QUERIES: parsed.data.DB_LOG_QUERIES,
+    DB_SLOW_QUERY_MS: parsed.data.DB_SLOW_QUERY_MS,
 }

@@ -65,11 +65,40 @@ if (envConfig.NODE_ENV === 'production' && sslOptions?.rejectUnauthorized === fa
     );
 }
 
+/**
+ * Query logging.
+ *
+ * This was `logging: console.log`, which prints every statement on every boot
+ * with its bound values already interpolated into the SQL. That puts password
+ * hashes, email addresses and refresh tokens in stdout, and in production means
+ * those records land in whatever collects the logs.
+ *
+ * Sequelize hands the logger the interpolated statement plus the duration, so
+ * the useful signal and the sensitive one arrive together. Full logging is now
+ * opt-in via DB_LOG_QUERIES for local debugging, and slow queries are reported
+ * on their own so production keeps a performance signal without a continuous
+ * record of every value in the database.
+ */
+const createQueryLogger = () => {
+  return (message: string, timing?: number) => {
+    if (typeof timing === "number" && timing >= envConfig.DB_SLOW_QUERY_MS) {
+      console.warn(
+        `[db] slow query (${timing}ms, threshold ${envConfig.DB_SLOW_QUERY_MS}ms): ${message}`
+      );
+      return;
+    }
+
+    if (envConfig.DB_LOG_QUERIES) {
+      console.log(`[db] ${message}`);
+    }
+  };
+};
+
 const sequelize = new Sequelize(DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres',
     models: [User, Product,Category,Cart,Order,OrderDetail,Payment,RefreshToken],
-    logging: console.log,
+    logging: createQueryLogger(),
     // Omitted entirely in disable mode rather than passed as undefined, so no
     // TLS option reaches pg that could contradict the configured mode.
     ...(sslOptions ? { dialectOptions: { ssl: sslOptions } } : {}),

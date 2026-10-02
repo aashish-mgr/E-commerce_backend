@@ -1,4 +1,6 @@
 import { Request, Response, NextFunction } from "express";
+import { ApiError } from "../services/asyncError";
+import { envConfig } from "../config/env";
 
 /**
  * Codes that mean a dependency (Postgres, Redis, an upstream API) was
@@ -35,14 +37,29 @@ const isDependencyUnavailable = (err: any): boolean => {
   return false;
 };
 
+/**
+ * Whether `err.message` was written for the caller and can be sent back.
+ *
+ * An ApiError is the only error type in this codebase whose message is authored
+ * for that purpose. Everything else - a Sequelize error carrying column names
+ * and constraint text, a pg error, a TypeError with a stack - reaches here with
+ * whatever text it was constructed with, and that text describes the inside of
+ * the server. Returning it used to hand those strings to any caller.
+ *
+ * The rule is deliberately "only if explicitly marked safe" rather than "unless
+ * it looks internal": guessing from the message is how leaks get reintroduced.
+ */
+const isCallerSafe = (err: unknown): boolean => err instanceof ApiError;
+
 export const notFound = (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  const err = new Error(`Route not found: ${req.method} ${req.originalUrl}`);
-  (err as any).statusCode = 404;
-  next(err);
+  // An ApiError so the text survives the caller-safe rule above. The path and
+  // method were sent by the client, so this reflects nothing back they did not
+  // already know.
+  next(new ApiError(`Route not found: ${req.method} ${req.originalUrl}`, 404));
 };
 
 export const errorHandler = (
@@ -65,17 +82,31 @@ export const errorHandler = (
       ? err.statusCode
       : 500;
 
-  if (statusCode >= 500) {
+  const callerSafe = isCallerSafe(err);
+
+  // Anything whose message is being withheld is logged, whatever the status.
+  // A 4xx that reached here unmarked is a mislabelled failure, and a 5xx is
+  // always worth a trace even when the text is safe to show.
+  if (statusCode >= 500 || !callerSafe) {
     console.error(`${req.method} ${req.originalUrl} -> ${statusCode}`, err);
   }
 
+  const message = callerSafe
+    ? err.message
+    : dependencyDown
+      ? "Service temporarily unavailable, please retry"
+      : "Internal Server Error";
+
   res.status(statusCode).json({
     success: false,
-    message:
-      err?.message ||
-      (dependencyDown
-        ? "Service temporarily unavailable, please retry"
-        : "Internal Server Error"),
-    ...(process.env.NODE_ENV === "development" ? { stack: err?.stack } : {}),
+    // `message` is the only field the frontend reads. There is deliberately no
+    // longer a second field carrying the raw text: that was a second leak that
+    // existed for no consumer, and it sat next to a sanitized message so it
+    // read as deliberate.
+    message,
+    // The stack carries file paths and internals, so it is confined to local
+    // development. NODE_ENV comes from the validated config rather than
+    // process.env directly, so an unset variable cannot silently expose it.
+    ...(envConfig.NODE_ENV === "development" ? { stack: err?.stack } : {}),
   });
 };

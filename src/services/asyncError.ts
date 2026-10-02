@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -10,25 +10,37 @@ export class ApiError extends Error {
   }
 }
 
-const handleError = (fn: Function) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    fn(req, res, next).catch((err: Error) => {
-      const statusCode =
-        err instanceof ApiError ? err.statusCode : 500;
-      console.error(err);
+/**
+ * `any` for req and res on purpose: handlers are declared against their own
+ * request subtypes (AuthRequest and friends), and a narrower parameter type here
+ * would reject all of them under strictFunctionTypes for no runtime benefit.
+ * The wrapper forwards without ever inspecting either value.
+ */
+type AsyncController = (req: any, res: any, next: NextFunction) => unknown;
 
-      // An ApiError carries a message meant for the caller, so it goes in
-      // `message` where the frontend reads it. Everything else keeps the generic
-      // text and stays in `errorMsg`, since an unexpected exception's message can
-      // contain internals that should not be sent to a client.
-      const isApiError = err instanceof ApiError;
-
-      return res.status(statusCode).json({
-        message: isApiError ? err.message : "Error occured",
-        errorMsg: err.message,
-      });
-    });
+/**
+ * Hands a rejected controller to the shared errorHandler instead of answering
+ * the request itself.
+ *
+ * This used to catch, then respond inline with a status code derived only from
+ * whether the error was an ApiError. That put two error paths in the codebase:
+ * this one, and errorHandler. They disagreed on status codes - a database or
+ * cache that was unreachable was reported here as a 500 even though
+ * errorHandler already knows to call that a retryable 503 - and it skipped
+ * errorHandler's development-only stack and its 5xx logging entirely. Errors
+ * now take one route.
+ *
+ * Awaiting rather than attaching .catch also covers a handler that throws
+ * synchronously before returning a promise, which the old form let escape the
+ * wrapper.
+ */
+const handleError = (fn: AsyncController) =>
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await fn(req, res, next);
+    } catch (err) {
+      next(err);
+    }
   };
-};
 
 export default handleError;
