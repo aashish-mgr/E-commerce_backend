@@ -23,12 +23,23 @@ const schema = z.object({
     // only when the transport disagrees with NODE_ENV, e.g. an HTTPS staging
     // host still running NODE_ENV=development.
     COOKIE_SECURE: z.enum(["true", "false"]).optional(),
-    // Where the browser is sent once a sign-in finishes. Absolute by
-    // construction: a relative value would strand the user on the API origin.
-    CLIENT_URL: z
+    // Where the browser is sent once a sign-in finishes, and the only origin
+    // allowed to make credentialed API calls. Absolute by construction: a
+    // relative value would strand the user on the API origin. Accepts a
+    // comma-separated list so staging and production can share one variable.
+    // The schema check is a plain string because the per-origin validation
+    // happens in clientOrigins below.
+    CLIENT_URL: z.string().min(1).default("http://localhost:5173"),
+    // Port to bind. Defaults to 3000, but hosts such as Render, Railway and Fly
+    // assign one at runtime and inject it as PORT, so this must never be
+    // hardcoded in app.ts.
+    PORT: z.coerce.number().int().positive().default(3000),
+    // Khalti gateway. The test and live APIs are different hosts serving the
+    // same paths, so the whole base is one variable rather than a flag.
+    KHALTI_API_BASE: z
         .string()
-        .url("CLIENT_URL must be a valid URL")
-        .default("http://localhost:5173"),
+        .url("KHALTI_API_BASE must be a valid URL")
+        .optional(),
     // How the Postgres connection is secured. Named after libpq's sslmode so it
     // reads the same as the connection string it overrides:
     //   disable     - no TLS. Local development against a local socket.
@@ -85,6 +96,39 @@ if (!parsed.success) {
     throw new Error("Invalid environment variables");
 }
 
+// A query log is a transcript of every password hash, email and token that
+// passed through the database, so there is no safe way to leave it on in
+// production. Warned about in dbConfig.ts as well; this is the fail-closed
+// half, because a warning in a log nobody reads is not a control.
+if (parsed.data.NODE_ENV === "production" && parsed.data.DB_LOG_QUERIES) {
+    console.error(
+        "DB_LOG_QUERIES is enabled in production. It records password hashes, " +
+            "emails and tokens in the query log. Refusing to start.",
+    );
+    throw new Error("Unsafe production configuration");
+}
+
+// Each configured origin is validated on its own, and trailing slashes are
+// stripped: a browser sends Origin without one, so "https://app.example.com/"
+// and "https://app.example.com" have to compare equal or the CORS check
+// rejects the real site.
+const clientOrigins = parsed.data.CLIENT_URL.split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
+for (const origin of clientOrigins) {
+    const valid = z.string().url().safeParse(origin);
+    if (!valid.success) {
+        console.error(`CLIENT_URL contains an invalid origin: "${origin}"`);
+        throw new Error("Invalid environment variables");
+    }
+}
+
+if (clientOrigins.length === 0) {
+    console.error("CLIENT_URL must list at least one origin");
+    throw new Error("Invalid environment variables");
+}
+
 // Fail closed: an unset COOKIE_SECURE must never silently mean "no Secure
 // flag" in production, where a cookie set over plaintext HTTP is exposed to
 // anyone on the path. NODE_ENV is the proxy for the deployment's transport
@@ -101,6 +145,15 @@ const dbSslMode =
     parsed.data.DB_SSL_MODE ??
     (parsed.data.NODE_ENV === "production" ? "verify-full" : "disable");
 
+// Live by default in production so a missing variable cannot quietly leave the
+// site on the test gateway and hand real payments to a sandbox.
+const khaltiApiBase = (
+    parsed.data.KHALTI_API_BASE ??
+    (parsed.data.NODE_ENV === "production"
+        ? "https://web-api.khalti.com/api/v2"
+        : "https://dev.khalti.com/api/v2")
+).replace(/\/+$/, "");
+
 export const envConfig = {
     NODE_ENV: parsed.data.NODE_ENV,
     DATABASE_URL: parsed.data.DATABASE_URL,
@@ -114,10 +167,13 @@ export const envConfig = {
     GOOGLE_CLIENT_SECRET: parsed.data.GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URL: parsed.data.GOOGLE_REDIRECT_URL,
     COOKIE_SECURE: cookieSecure,
-    CLIENT_URL: parsed.data.CLIENT_URL,
+    CLIENT_URL: clientOrigins[0],
+    CLIENT_ORIGINS: clientOrigins,
+    PORT: parsed.data.PORT,
     DB_SSL_MODE: dbSslMode,
     DB_SSL_CA: parsed.data.DB_SSL_CA,
     KHALTI_SECRET_KEY: parsed.data.KHALTI_SECRET_KEY,
+    KHALTI_API_BASE: khaltiApiBase,
     ACCESS_TOKEN_EXPIRES_IN: parsed.data.ACCESS_TOKEN_EXPIRES_IN ?? '15m',
     REFRESH_TOKEN_EXPIRES_IN: parsed.data.REFRESH_TOKEN_EXPIRES_IN ?? '20d',
     REDIS_URL: parsed.data.REDIS_URL,

@@ -244,16 +244,19 @@ class OrderController {
     let khaltiReturnData: khaltiResponse;
     try {
       const response = await axios.post(
-        "https://dev.khalti.com/api/v2/epayment/initiate/",
+        `${envConfig.KHALTI_API_BASE}/epayment/initiate/`,
         {
-          return_url: "http://localhost:5173/paymentCallback",
+          // CLIENT_URL, not a baked-in localhost: Khalti sends the buyer here
+          // after paying, so a hardcoded value would strand every customer on
+          // their own machine.
+          return_url: `${envConfig.CLIENT_URL}/paymentCallback`,
           // Khalti expects the amount in paisa as a whole number. Multiplying
           // the stored total by 100 would reintroduce the float drift the minor
           // unit accounting exists to avoid.
           amount: totalMinorUnits,
           purchase_order_id: orderData.id,
           purchase_order_name: "order_" + orderData.id,
-          website_url: "http://localhost:5173/",
+          website_url: `${envConfig.CLIENT_URL}/`,
         },
         {
           headers: {
@@ -332,7 +335,7 @@ class OrderController {
     }
 
     const response = await axios.post(
-      "https://dev.khalti.com/api/v2/epayment/lookup/",
+      `${envConfig.KHALTI_API_BASE}/epayment/lookup/`,
       { pidx },
       {
         headers: {

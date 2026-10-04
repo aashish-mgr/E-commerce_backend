@@ -12,6 +12,7 @@ import { notFound, errorHandler } from './middlewares/errorHandler';
 import * as dotenv from 'dotenv'
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import path from 'path';
 import { generalLimiter,authLimiter } from './middlewares/rateLimiter';
 import { connectRedis, getRedisStatus } from './config/redis';
@@ -33,8 +34,47 @@ app.use(express.json());
 adminSeeder();
 CategoryController.categorySeeder();
 
+// Security headers. Helmet's defaults are on, with two deliberate overrides:
+// 'unsafe-inline' in style-src because React inline styles and Tailwind both
+// set style attributes, and a wildcard on connect-src so the browser can reach
+// the API wherever it is deployed. script-src stays 'self', which is what
+// actually blocks injected inline script. Tighten connect-src to the API origin
+// once the deployment domain is fixed.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        connectSrc: ["'self'", "https:"],
+        fontSrc: ["'self'", "data:"],
+        formAction: ["'self'"],
+        upgradeInsecureRequests: null,
+      },
+    },
+    // HSTS is only honoured over HTTPS and is ignored over plain HTTP, which is
+    // what local development runs on, so leaving it on does not break dev.
+    hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+    crossOriginEmbedderPolicy: false,
+  }),
+);
+
 app.use (cors( {
-    origin: 'http://localhost:5173',
+    // Derived from CLIENT_URL so the deployed domain is not served a hardcoded
+    // localhost allowlist. Compared without a trailing slash because that is
+    // the form a browser sends in Origin.
+    origin: (origin, callback) => {
+      // No Origin header means a non-browser client (curl, health check,
+      // server-to-server). Those carry no ambient cookies, so CORS is not the
+      // control that protects them.
+      if (!origin) return callback(null, true);
+      callback(null, envConfig.CLIENT_ORIGINS.includes(origin));
+    },
     credentials: true,
 }));
 app.use(cookieParser());
@@ -87,9 +127,11 @@ const startServer =async () => {
     process.exit(1);
   }
 
-  app.listen(3000,() => {
+  const port = envConfig.PORT;
+
+  app.listen(port,() => {
     console.log(
-      `server is listening on port 3000 (cache: ${cacheEnabled ? "enabled" : "disabled"})`
+      `server is listening on port ${port} (cache: ${cacheEnabled ? "enabled" : "disabled"})`
     );
   })
 }
