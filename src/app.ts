@@ -26,6 +26,18 @@ registerProcessErrorBoundary();
 
 const app = express();
 
+// Render terminates TLS and forwards the real client address in
+// X-Forwarded-For, so without this express reads the proxy's own address as
+// req.ip. That collapses every visitor into one rate-limit bucket, and the
+// limiter starts throttling the whole site as though it were one client, while
+// also reporting ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every request.
+//
+// 1, not true: it trusts exactly the one proxy Render puts in front of the app.
+// `true` would believe the header from any source, and since a client can send
+// X-Forwarded-For itself, that lets anyone rotate the value to sidestep the
+// limit entirely.
+app.set("trust proxy", 1);
+
 connectDb();
 
 app.use(express.json());
