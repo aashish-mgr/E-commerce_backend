@@ -129,6 +129,18 @@ const startServer =async () => {
 
   const port = envConfig.PORT;
 
+  // Transport settings only, never a secret. These four decide whether auth
+  // cookies work at all and nothing about them is visible in a failed request:
+  // a cookie silently withheld by SameSite or Secure looks identical on the
+  // server to a user who simply never logged in. Logging the resolved values
+  // makes that failure readable from the deploy log.
+  console.log(
+    `transport: nodeEnv=${envConfig.NODE_ENV} cookieSecure=${envConfig.COOKIE_SECURE} ` +
+      `sameSite=${envConfig.COOKIE_SECURE ? "none" : "lax"} ` +
+      `clientOrigins=${envConfig.CLIENT_ORIGINS.join(",")} ` +
+      `dbSsl=${envConfig.DB_SSL_MODE}`,
+  );
+
   app.listen(port,() => {
     console.log(
       `server is listening on port ${port} (cache: ${cacheEnabled ? "enabled" : "disabled"})`
