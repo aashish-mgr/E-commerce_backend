@@ -129,6 +129,46 @@ if (clientOrigins.length === 0) {
     throw new Error("Invalid environment variables");
 }
 
+// A localhost origin in production never fails at boot. The service starts, the
+// storefront loads, CORS admits nothing, and the OAuth return trip sends the
+// browser to http://localhost:5173, where it finds nothing. Refusing to start
+// points at the actual mistake instead, and follows the same fail-closed
+// reasoning as the DB_LOG_QUERIES check above.
+const isLoopbackHost = (host: string): boolean =>
+    host === "localhost" || host === "127.0.0.1" || host === "::1";
+
+const loopbackOrigins = clientOrigins.filter((origin) => {
+    try {
+        return isLoopbackHost(new URL(origin).hostname);
+    } catch {
+        // Already rejected by the per-origin url() check above.
+        return false;
+    }
+});
+
+if (parsed.data.NODE_ENV === "production" && loopbackOrigins.length > 0) {
+    console.error(
+        `CLIENT_URL points at localhost in production: ${loopbackOrigins.join(", ")}. ` +
+            "Browsers cannot reach it, so CORS and the OAuth return trip both fail. " +
+            "Set it to the deployed frontend origin."
+    );
+    throw new Error("Invalid environment variables");
+}
+
+// Parsing cannot fail here: every client origin passed z.string().url() above.
+if (
+    parsed.data.NODE_ENV === "production" &&
+    isLoopbackHost(new URL(parsed.data.GOOGLE_REDIRECT_URL).hostname)
+) {
+    console.error(
+        `GOOGLE_REDIRECT_URL points at localhost in production: ` +
+            `${parsed.data.GOOGLE_REDIRECT_URL}. Google sends the browser there after ` +
+            "sign-in, where no API is listening. Set it to this service's own callback " +
+            "URL, and register that exact URL as an authorised redirect URI in Google Cloud."
+    );
+    throw new Error("Invalid environment variables");
+}
+
 // Fail closed: an unset COOKIE_SECURE must never silently mean "no Secure
 // flag" in production, where a cookie set over plaintext HTTP is exposed to
 // anyone on the path. NODE_ENV is the proxy for the deployment's transport
