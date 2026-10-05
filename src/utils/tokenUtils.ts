@@ -37,10 +37,28 @@ export const expiryToMs = (expiry: string): number => {
  * works, where the browser would silently drop a Secure cookie and every
  * login would fail.
  *
- * `sameSite: "lax"` is deliberate rather than "strict": the OAuth callback is
- * a top-level cross-site GET navigation back from Google, and a Strict cookie
- * would not be sent there, breaking sign-in. Lax still blocks the CSRF that
- * matters here (cross-site POSTs and subresource requests).
+ * `sameSite` is "none" in production and "lax" on a plaintext local dev
+ * origin, and the split is a consequence of where the two are hosted.
+ *
+ * Deployed, the frontend and the API sit on different registrable domains
+ * (a Vercel app and onrender.com), which makes every request between them
+ * *cross-site*, not merely cross-origin. A Lax cookie is withheld from
+ * cross-site subresource requests, so with "lax" in production the browser
+ * never sent the refresh token to /auth/refresh and every silent session
+ * restore failed with "Refresh token is missing". "None" is the only value
+ * that works across sites, and browsers reject "None" unless Secure is also
+ * set — which is why the two flags are derived from one signal rather than
+ * chosen independently.
+ *
+ * The cost is CSRF. Lax blocks cross-site POSTs, "None" does not, so a
+ * hostile page could submit a state-changing request to an authenticated
+ * endpoint using the visitor's cookies. What still holds it back: the CORS
+ * allowlist admits only CLIENT_ORIGINS and never "*" with credentials, so a
+ * cross-origin fetch cannot read a response, and express.json() only parses
+ * the JSON content type, which a plain HTML form cannot send. That is a
+ * thinner margin than Lax, not equivalent to it. The stronger fix is to put
+ * the API on the same site as the frontend (api.example.com alongside
+ * www.example.com), which restores "lax" and with it the CSRF backstop.
  */
 export const baseCookieOptions = (): Pick<
   CookieOptions,
@@ -48,7 +66,7 @@ export const baseCookieOptions = (): Pick<
 > => ({
   httpOnly: true,
   secure: envConfig.COOKIE_SECURE,
-  sameSite: "lax",
+  sameSite: envConfig.COOKIE_SECURE ? "none" : "lax",
 });
 
 export const setAuthCookies = (
