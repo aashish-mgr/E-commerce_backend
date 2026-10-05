@@ -104,11 +104,20 @@ const sequelize = new Sequelize(DATABASE_URL, {
     ...(sslOptions ? { dialectOptions: { ssl: sslOptions } } : {}),
 });
 
+// Associations are in-memory metadata on the model classes: they need no live
+// connection and nothing is read from the database to establish them. This used
+// to run after authenticate() succeeded, which made them contingent on the
+// database being reachable, so a TLS or network failure took out every
+// eager-loaded query too — each one failed with "User is not associated to
+// Product!", naming a missing association rather than the unreachable database
+// that actually caused it. Wiring them at load time keeps the two failures
+// distinct.
+applyRelationship();
+
 const connectDb = async () => {
     try {
     await sequelize.authenticate();
     console.log("connection has been established successfully")
-    applyRelationship();
     await sequelize.sync({alter: false,force: false});
     await sequelize.query('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar" VARCHAR(255)');
     await sequelize.query('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock" INTEGER NOT NULL DEFAULT 100');
